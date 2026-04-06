@@ -25,7 +25,7 @@ def check_python_version():
 
 
 def check_minigraf():
-    """Check if minigraf CLI is installed."""
+    """Check if minigraf CLI is installed, auto-install if missing."""
     try:
         result = subprocess.run(
             ["minigraf", "--version"],
@@ -44,12 +44,29 @@ def check_minigraf():
 
     print("✗ minigraf CLI not found")
     print()
-    print("To install minigraf (>= 0.13.0):")
-    print("  cargo install --git https://github.com/adityamukho/minigraf")
-    print()
-    print("Or use an older version:")
-    print("  cargo install minigraf")
-    return False
+    print("Installing minigraf...")
+    
+    try:
+        result = subprocess.run(
+            ["cargo", "install", "--git", "https://github.com/adityamukho/minigraf"],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        if result.returncode == 0:
+            print("✓ minigraph installed successfully!")
+            return True
+        else:
+            print("✗ Failed to install minigraf")
+            print(result.stderr)
+            return False
+    except FileNotFoundError:
+        print("✗ cargo not found - please install Rust first:")
+        print("  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh")
+        return False
+    except subprocess.TimeoutExpired:
+        print("✗ Installation timed out")
+        return False
 
 
 def check_tool_import():
