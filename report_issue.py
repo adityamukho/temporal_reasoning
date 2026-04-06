@@ -4,13 +4,61 @@ report_issue.py - Report minigraf errors as GitHub issues.
 
 Provides a tool to file issues when minigraf queries/transacts fail.
 Uses GitHub CLI (gh) if available, otherwise falls back to logging.
+
+Automatically routes issues to the correct repo:
+- minigraf core bugs -> https://github.com/adityamukho/minigraf
+- temporal-reasoning skill bugs -> current repo
 """
 
 import subprocess
 import sys
 from typing import Dict, Optional
 
-VALID_ISSUE_TYPES = ["invalid_query", "transact_failure", "parse_error"]
+VALID_ISSUE_TYPES = ["invalid_query", "transact_failure", "parse_error", "minigraf_bug"]
+
+MINIGRAF_REPO = "adityamukho/minigraf"
+
+
+def _is_minigraf_related(description: str, error: str = "", datalog: str = "") -> bool:
+    """Determine if issue is related to minigraf core vs the skill wrapper."""
+    combined = f"{description} {error} {datalog}".lower()
+    
+    minigraf_indicators = [
+        "execution error",
+        "parse error",
+        "datalog",
+        "query engine",
+        "transaction",
+        "transact",
+        "retract",
+        "temporal",
+        ":where clause",
+        "empty result",
+        "no results found",
+    ]
+    
+    wrapper_indicators = [
+        "minigraf_tool.py",
+        "python wrapper",
+        "import error",
+        "subprocess",
+        "cli wrapper",
+        "http server",
+    ]
+    
+    minigraf_score = sum(1 for ind in minigraf_indicators if ind in combined)
+    wrapper_score = sum(1 for ind in wrapper_indicators if ind in combined)
+    
+    return minigraf_score > wrapper_score
+
+
+def _get_target_repo(is_minigraf_bug: bool) -> Optional[Dict[str, str]]:
+    """Get the target repo for the issue."""
+    if is_minigraf_bug:
+        parts = MINIGRAF_REPO.split("/")
+        return {"owner": parts[0], "name": parts[1]}
+    
+    return _get_current_repo()
 
 
 def _check_gh_available() -> bool:
@@ -26,7 +74,7 @@ def _check_gh_available() -> bool:
         return False
 
 
-def _get_repo_info() -> Optional[Dict[str, str]]:
+def _get_current_repo() -> Optional[Dict[str, str]]:
     """Get current repo info using gh."""
     try:
         result = subprocess.run(
@@ -47,6 +95,11 @@ def _get_repo_info() -> Optional[Dict[str, str]]:
     return None
 
 
+def _get_repo_info() -> Optional[Dict[str, str]]:
+    """Get current repo info using gh."""
+    return _get_current_repo()
+
+
 def report_issue(
     issue_type: str,
     description: str,
@@ -57,20 +110,27 @@ def report_issue(
     Report an issue with minigraf operations.
 
     Args:
-        issue_type: One of "invalid_query", "transact_failure", "parse_error"
+        issue_type: One of "invalid_query", "transact_failure", "parse_error", "minigraf_bug"
         description: Human-readable description of the issue
         datalog: Optional Datalog query or transact that failed
         error: Optional error message from minigraf
 
     Returns:
-        Dict with 'ok', 'method' (gh or log), and 'result'
+        Dict with 'ok', 'method' (gh or log), 'repo', and 'result'
     """
     if issue_type not in VALID_ISSUE_TYPES:
         return {
             "ok": False,
             "error": f"Invalid issue_type. Must be one of: {VALID_ISSUE_TYPES}"
         }
-
+    
+    is_minigraf_bug = _is_minigraf_related(description, error or "", datalog or "")
+    if issue_type == "minigraf_bug":
+        is_minigraf_bug = True
+    
+    target_repo = _get_target_repo(is_minigraf_bug)
+    repo_name = f"{target_repo['owner']}/{target_repo['name']}" if target_repo else "unknown"
+    
     body_parts = [f"**Description:** {description}"]
     
     if datalog:
@@ -78,15 +138,19 @@ def report_issue(
     
     if error:
         body_parts.append(f"\n**Error:**\n```\n{error}\n```")
-
+    
+    if is_minigraf_bug:
+        body_parts.append(f"\n*Auto-routed to minigraf repo based on content*")
+    
     body = "\n".join(body_parts)
     title = f"[minigraf] {issue_type}: {description[:50]}"
-
+    
     gh_available = _check_gh_available()
-
+    
     if not gh_available:
         print("=" * 50)
-        print("GitHub CLI (gh) not available. Issue not filed.")
+        print(f"GitHub CLI (gh) not available. Issue not filed.")
+        print(f"Target repo: {repo_name}")
         print("=" * 50)
         print(f"Title: {title}")
         print(f"Body:\n{body}")
@@ -94,15 +158,16 @@ def report_issue(
         return {
             "ok": True,
             "method": "log",
+            "repo": repo_name,
             "result": "gh not available, logged to stdout"
         }
-
-    repo = _get_repo_info()
-    if not repo:
+    
+    if not target_repo:
         print("Not in a GitHub repository. Issue not filed.")
         return {
             "ok": True,
             "method": "log",
+            "repo": "unknown",
             "result": "not in github repo, logged to stdout"
         }
 
@@ -110,7 +175,7 @@ def report_issue(
         result = subprocess.run(
             [
                 "gh", "issue", "create",
-                "--repo", f"{repo['owner']}/{repo['name']}",
+                "--repo", f"{target_repo['owner']}/{target_repo['name']}",
                 "--title", title,
                 "--body", body
             ],
@@ -124,6 +189,7 @@ def report_issue(
             return {
                 "ok": True,
                 "method": "gh",
+                "repo": repo_name,
                 "result": issue_url
             }
         else:
