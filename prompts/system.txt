@@ -30,7 +30,7 @@ After querying: "Based on what you told me earlier..." or "From my memory..."
 
 ### EXAMPLES:
 
-Storing an architecture decision:
+Storing an architecture decision (note: double brackets required):
 transact:
 [[:decision/cache-strategy :decision/description "use Redis for session cache"]
  [:decision/cache-strategy :decision/reason "low latency requirement"]
@@ -42,3 +42,7 @@ query:
  :where
  [?e :component/name "AuthService"]
  [?e :project/constraint ?constraint]]
+
+### CORRECT SYNTAX:
+- transact: (transact [[:entity :attr "value"] [:entity2 :attr2 "value2"]])
+- query: (query [:find ?x :where [?e :attr ?x]])
