@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
 Installation script for temporal-reasoning skill.
-Checks dependencies and provides next steps.
+Checks dependencies, syncs skill files, provides next steps.
 """
 
 import sys
 import subprocess
 import os
+import time
+import json
+
+UPDATE_INTERVAL = 7 * 24 * 60 * 60  # 7 days in seconds
+SKILL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".opencode", "skills", "temporal-reasoning")
+LAST_UPDATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".last_update")
 
 
 def check_python_version():
@@ -104,5 +110,65 @@ def main():
         sys.exit(1)
 
 
+def should_update():
+    """Check if update should run (no more than once a week)."""
+    if not os.path.exists(LAST_UPDATE_FILE):
+        return True
+    
+    try:
+        with open(LAST_UPDATE_FILE, 'r') as f:
+            last_update = float(f.read().strip())
+    except (ValueError, IOError):
+        return True
+    
+    return (time.time() - last_update) > UPDATE_INTERVAL
+
+
+def update_skill():
+    """Pull from GitHub and sync skill files."""
+    import shutil
+    
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    skill_dir = os.path.join(repo_dir, ".opencode", "skills", "temporal-reasoning")
+    
+    print("Checking for skill updates...")
+    
+    try:
+        result = subprocess.run(
+            ["git", "pull", "origin", "master"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            print("Pulling latest from GitHub...")
+            os.makedirs(skill_dir, exist_ok=True)
+            
+            # Sync SKILL.md
+            src = os.path.join(repo_dir, "SKILL.md")
+            dst = os.path.join(skill_dir, "SKILL.md")
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+                print("✓ Synced SKILL.md")
+            
+            # Record update time
+            with open(LAST_UPDATE_FILE, 'w') as f:
+                f.write(str(time.time()))
+            
+            print("✓ Skill updated!")
+            return True
+        else:
+            print("✓ Skill already up-to-date")
+            return False
+    except Exception as e:
+        print(f"Note: Could not update skill: {e}")
+        return False
+
+
 if __name__ == "__main__":
+    # Check for updates on first run or if week has passed
+    if should_update():
+        update_skill()
+    
     main()

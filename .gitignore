@@ -16,3 +16,6 @@ memory.graph
 # Skill duplicates (use .opencode/skills/ version)
 SKILL.md
 
+# Update tracking
+.last_update
+
