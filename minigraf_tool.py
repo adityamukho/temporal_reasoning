@@ -58,7 +58,7 @@ def _get_default_graph_path() -> str:
         base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~/AppData/Local"))
         graph_dir = Path(base) / "temporal-reasoning"
     elif system == "Darwin":
-        base = os.environ.get("HOME") or os.path.expanduser("~")
+        base = os.environ.get("HOME") or str(Path.home()) if Path.home().exists() else os.path.expanduser("~")
         graph_dir = Path(base) / "Library" / "Application Support" / "temporal-reasoning"
     else:
         xdg_data = os.environ.get("XDG_DATA_HOME")
