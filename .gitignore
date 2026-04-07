@@ -14,7 +14,7 @@ memory.graph
 .DS_Store
 
 # Skill duplicates (use .opencode/skills/ version)
-SKILL.md
+# SKILL.md is in the repo - install.py syncs it to .opencode/
 
 # Update tracking
 .last_update

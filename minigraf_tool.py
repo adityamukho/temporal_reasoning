@@ -13,14 +13,34 @@ Usage:
 import subprocess
 import json
 import os
-import tempfile
 import urllib.request
 import urllib.error
+from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 
 MINIGRAF_BIN = "minigraf"
 
-DEFAULT_GRAPH_PATH = os.path.join(tempfile.gettempdir(), "minigraf_memory.graph")
+def _get_default_graph_path() -> str:
+    """Get default graph path with proper platform support."""
+    env_path = os.environ.get("MINIGRAF_GRAPH_PATH")
+    if env_path:
+        return env_path
+    
+    if os.name == "nt":  # Windows
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~/AppData/Local"))
+        graph_dir = Path(base) / "temporal-reasoning"
+    else:
+        # Linux/macOS - use XDG_DATA_HOME or ~/.local/share
+        xdg_data = os.environ.get("XDG_DATA_HOME")
+        if xdg_data:
+            graph_dir = Path(xdg_data) / "temporal-reasoning"
+        else:
+            graph_dir = Path.home() / ".local" / "share" / "temporal-reasoning"
+    
+    graph_dir.mkdir(parents=True, exist_ok=True)
+    return str(graph_dir / "memory.graph")
+
+DEFAULT_GRAPH_PATH = _get_default_graph_path()
 
 MINIGRAF_MODE = os.environ.get("MINIGRAF_MODE", "cli")
 MINIGRAF_HTTP_URL = os.environ.get("MINIGRAF_HTTP_URL", "http://localhost:8080")
@@ -101,25 +121,12 @@ def query(datalog: str, as_of: Optional[Union[int, str]] = None, graph_path: Opt
     if not os.path.exists(path):
         return {"ok": False, "error": f"No graph file at {path}. Transact first."}
     
-    # Handle temporal query
-    if as_of is not None:
-        as_of_clause = f":as-of {as_of}"
-        if ":as-of" not in datalog:
-            if ":find" in datalog:
-                # Insert :as-of after :find clause
-                datalog = datalog.replace(":find", ":find", 1)  # Find first :find
-                # Find position after :find and insert
-                find_idx = datalog.find(":find")
-                after_find = datalog[find_idx + 5:]
-                # Find first space or [ after :find
-                next_space = len(after_find)
-                for char in [' ', '[']:
-                    idx = after_find.find(char)
-                    if idx != -1 and idx < next_space:
-                        next_space = idx
-                datalog = datalog[:find_idx + 5 + next_space] + f" {as_of_clause} " + datalog[find_idx + 5 + next_space:]
-            else:
-                datalog = f"[{as_of_clause} {datalog}]"
+    # Handle temporal query - require explicit :as-of in datalog
+    if as_of is not None and ":as-of" not in datalog:
+        return {
+            "ok": False,
+            "error": "as_of requires :as-of clause in datalog. Use: [:find ?x :as-of N :where [?e :attr ?x]]"
+        }
     
     full_query = f"(query {datalog})"
     result = _run_minigraf(["--file", path], input_data=full_query)
@@ -136,17 +143,27 @@ def query(datalog: str, as_of: Optional[Union[int, str]] = None, graph_path: Opt
     if len(lines) < 3:
         return {"ok": True, "results": []}
     
+    # Parse results - Note: verified against minigraf v0.18.0
+    # Output format: header line, separator line (---), then data lines
+    # Header contains ?variable or :keyword tokens
+    if len(lines) < 3:
+        return {"ok": True, "results": []}
+    
     result_header = lines[0]
     separator = lines[1]
     
+    # Count expected columns from header tokens
     col_count = result_header.count("?") + result_header.count(":")
+    if col_count == 0:
+        return {"ok": False, "error": f"Unexpected output format from minigraf: {output[:200]}"}
+    
     results = []
     
     for line in lines[2:]:
         stripped = line.strip()
         if not stripped or stripped.startswith("---"):
             continue
-        if stripped.startswith("No results") or stripped.endswith("found."):
+        if "No results" in stripped or stripped.endswith("found."):
             continue
         
         values = [v.strip() for v in line.split("|")]
@@ -200,23 +217,18 @@ def transact(facts: str, reason: Optional[str] = None, graph_path: Optional[str]
 
 def temporal_query(datalog: str, as_of: Union[int, str], graph_path: Optional[str] = None) -> Dict[str, Any]:
     """
+    DEPRECATED: Use query() with explicit :as-of in datalog instead.
+    
     Query the graph as of a specific transaction time.
     
     Args:
-        datalog: A valid Datalog query string
-        as_of: Transaction count to query as of
+        datalog: A valid Datalog query string with :as-of clause
+        as_of: Ignored (kept for backwards compatibility)
         graph_path: Optional path to .graph file
     
     Returns:
         Dict with query results
     """
-    as_of_clause = f":as-of {as_of}"
-    if ":as-of" not in datalog:
-        if ":find" in datalog:
-            datalog = datalog.replace(":find", f":find {as_of_clause} :find".replace(" :find", ""), 1)
-        else:
-            datalog = f"[{as_of_clause} {datalog}]"
-    
     return query(datalog, graph_path)
 
 

@@ -162,12 +162,17 @@ def update_skill():
             print("Pulling latest from GitHub...")
             os.makedirs(skill_dir, exist_ok=True)
             
-            # Sync SKILL.md
-            src = os.path.join(repo_dir, "SKILL.md")
-            dst = os.path.join(skill_dir, "SKILL.md")
-            if os.path.exists(src):
-                shutil.copy2(src, dst)
-                print("✓ Synced SKILL.md")
+            # Sync all skill files
+            files_to_sync = [
+                "SKILL.md",
+            ]
+            
+            for fname in files_to_sync:
+                src = os.path.join(repo_dir, fname)
+                dst = os.path.join(skill_dir, fname)
+                if os.path.exists(src):
+                    shutil.copy2(src, dst)
+                    print(f"✓ Synced {fname}")
             
             # Record update time
             with open(LAST_UPDATE_FILE, 'w') as f:
