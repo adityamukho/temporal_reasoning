@@ -19,7 +19,12 @@ from minigraf_tool import query, transact, reset
 
 class TestHarness:
     def __init__(self, graph_path=None):
-        self.graph_path = graph_path or tempfile.mktemp(suffix=".graph")
+        if graph_path:
+            self.graph_path = graph_path
+        else:
+            fd, self.graph_path = tempfile.mkstemp(suffix=".graph")
+            os.close(fd)
+            os.remove(self.graph_path)
     
     def setup(self):
         """Create test facts representing a coding session."""

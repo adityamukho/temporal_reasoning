@@ -146,3 +146,19 @@ echo "(query [:find ?name :where [:alice :person/name ?name]])" | minigraf --fil
 | `prompts/fewshots.txt` | Coding-specific examples |
 | `tests/test_harness.py` | Validation tests |
 | `ROADMAP.md` | Project roadmap |
+
+## Error Responses
+
+All functions return a dict with `ok` boolean. On error:
+
+```python
+{"ok": False, "error": "Descriptive error message"}
+```
+
+Common errors:
+- `minigraf not found` — Install minigraf CLI or add to PATH
+- `No graph file at <path>` — Call `transact()` first to create graph
+- `as_of requires :as-of clause` — Include `:as-of N` in your Datalog query
+- `reason is required for all writes` — Provide non-empty reason parameter
+
+Use `report_issue.py` to auto-file bugs to the correct repo.

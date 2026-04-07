@@ -14,7 +14,7 @@ fn get_graph_path() -> String {
     GRAPH_PATH
         .get_or_init(|| {
             std::env::var("MINIGRAF_GRAPH_PATH").unwrap_or_else(|_| {
-                if std::path::Path::new("/tmp").map(|p| p.exists()).unwrap_or(false) {
+                if std::path::Path::new("/tmp").exists() {
                     "/tmp/minigraf_memory.graph".to_string()
                 } else {
                     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());

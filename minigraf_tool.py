@@ -21,14 +21,28 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    stream=sys.stderr
-)
 logger = logging.getLogger("minigraf_tool")
 
+if not logger.handlers and not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        stream=sys.stderr
+    )
+
 MINIGRAF_BIN = "minigraf"
+
+def _get_timeout() -> int:
+    """Get timeout from environment variable, default to 30 seconds."""
+    env_timeout = os.environ.get("MINIGRAF_TIMEOUT")
+    if env_timeout:
+        try:
+            return int(env_timeout)
+        except ValueError:
+            pass
+    return 30
+
+MINIGRAF_TIMEOUT = _get_timeout()
 
 def _get_default_graph_path() -> str:
     """Get default graph path with proper platform support."""
@@ -44,11 +58,8 @@ def _get_default_graph_path() -> str:
         base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~/AppData/Local"))
         graph_dir = Path(base) / "temporal-reasoning"
     elif system == "Darwin":
-        xdg_data = os.environ.get("XDG_DATA_HOME")
-        if xdg_data:
-            graph_dir = Path(xdg_data) / "temporal-reasoning"
-        else:
-            graph_dir = Path.home() / ".local" / "share" / "temporal-reasoning"
+        base = os.environ.get("HOME")
+        graph_dir = Path(base) / "Library" / "Application Support" / "temporal-reasoning"
     else:
         xdg_data = os.environ.get("XDG_DATA_HOME")
         if xdg_data:
@@ -91,7 +102,7 @@ def _run_minigraf(args: List[str], input_data: Optional[str] = None) -> Dict[str
     """Run minigraf CLI and return parsed result.
     
     Note: Uses list args (not shell=True) to prevent shell injection.
-    Timeout is set to 30 seconds to prevent indefinite hangs.
+    Timeout is configurable via MINIGRAF_TIMEOUT env var (default 30s).
     """
     logger.debug(f"Running minigraf with args: {args}")
     try:
@@ -100,7 +111,7 @@ def _run_minigraf(args: List[str], input_data: Optional[str] = None) -> Dict[str
             input=input_data,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=MINIGRAF_TIMEOUT
         )
         
         if result.returncode != 0:

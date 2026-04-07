@@ -19,11 +19,6 @@ SKILL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".opencode"
 LAST_UPDATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".last_update")
 
 
-def is_ci_environment():
-    """Check if running in CI/CD environment."""
-    return os.environ.get("CI", "").lower() in ("1", "true", "yes")
-
-
 def check_python_version():
     """Check Python version is 3.8+."""
     if sys.version_info < (3, 8):
@@ -125,7 +120,10 @@ def should_update():
     
     try:
         with open(LAST_UPDATE_FILE, 'r') as f:
-            last_update = float(f.read().strip())
+            content = f.read().strip()
+            if not content:
+                return True
+            last_update = int(content)
     except (ValueError, IOError):
         return True
     
