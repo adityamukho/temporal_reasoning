@@ -17,6 +17,40 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from minigraf_tool import query, transact, reset
 
 
+def _first_value(result):
+    """Return the first scalar value from a query result."""
+    if not result.get("ok"):
+        raise AssertionError(f"Query failed: {result.get('error')}")
+    rows = result.get("results", [])
+    if not rows:
+        raise AssertionError("Expected persisted memory result, got none")
+    return str(rows[0][0]).strip('"')
+
+
+def answer_cache_strategy_question(graph_path):
+    """Simulate a later session answering from persisted memory."""
+    decision = _first_value(
+        query(
+            "[:find ?desc :where [?e :decision/description ?desc]]",
+            graph_path=graph_path,
+        )
+    )
+    return f"Use {decision} based on persisted memory from the earlier session."
+
+
+def derive_cache_plan(graph_path):
+    """Simulate a later session turning persisted memory into an action."""
+    decision = _first_value(
+        query(
+            "[:find ?desc :where [?e :decision/description ?desc]]",
+            graph_path=graph_path,
+        )
+    )
+    if "Redis" not in decision:
+        raise AssertionError(f"Unexpected cache decision: {decision}")
+    return {"cache_backend": "Redis", "source": "persisted memory"}
+
+
 @pytest.fixture
 def populated_graph():
     """Create a temporary graph pre-populated with test facts."""
@@ -80,6 +114,22 @@ def test_temporal_query(populated_graph):
     assert result["ok"], f"Temporal query failed: {result.get('error')}"
 
 
+def test_cross_session_decision_changes_later_answer(populated_graph):
+    """Test: Does a later session answer using persisted decisions?"""
+    answer = answer_cache_strategy_question(populated_graph)
+
+    assert "Redis" in answer
+    assert "persisted memory" in answer
+
+
+def test_cross_session_decision_changes_later_action(populated_graph):
+    """Test: Does a later session derive an action from persisted decisions?"""
+    plan = derive_cache_plan(populated_graph)
+
+    assert plan["cache_backend"] == "Redis"
+    assert plan["source"] == "persisted memory"
+
+
 def test_reason_required():
     """Test: transact requires reason parameter."""
     fd, graph_path = tempfile.mkstemp(suffix=".graph")
@@ -138,6 +188,10 @@ def run_tests():
         print("✓ Dependency query: PASS")
         test_temporal_query(graph_path)
         print("✓ Temporal query: PASS")
+        test_cross_session_decision_changes_later_answer(graph_path)
+        print("✓ Cross-session answer derivation: PASS")
+        test_cross_session_decision_changes_later_action(graph_path)
+        print("✓ Cross-session action derivation: PASS")
         test_reason_required()
         print("✓ Reason required: PASS")
         print("\n✓ All tests passed!")

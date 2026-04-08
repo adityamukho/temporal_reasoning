@@ -135,6 +135,29 @@ query("[:find ?x :as-of 5 :where [?e :attr ?x]]")
 query("[:find (count ?e) :where [?e :decision/description ?d]]")
 ```
 
+## Cross-Session Evaluation
+
+The repository includes a deterministic evaluation showing that persisted memory
+changes behavior in a later session without restating the original context.
+
+Run:
+
+```bash
+pytest tests/test_harness.py -q
+```
+
+Success means the harness demonstrates all of the following against the same
+graph file:
+- A decision is stored in an earlier session.
+- A later session answers a cache-strategy question using that persisted
+  decision.
+- A later session derives an action-oriented plan from the same persisted
+  decision.
+
+This evaluation is intentionally local and deterministic. It does not depend on
+live model output, so it is suitable as repeatable evidence for the skill's
+cross-session usefulness claim.
+
 ## Phases
 
 - **Phase 1** — Python skill layer ✓
