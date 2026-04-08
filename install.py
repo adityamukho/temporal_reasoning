@@ -16,8 +16,23 @@ from datetime import datetime, timezone
 
 UPDATE_INTERVAL = 7 * 24 * 60 * 60  # 7 days in seconds
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
-SKILL_DIR = os.path.join(REPO_DIR, ".opencode", "skills", "temporal_reasoning")
 LAST_UPDATE_FILE = os.path.join(REPO_DIR, ".last_update")
+
+FILES_TO_SYNC = ["SKILL.md", "minigraf_tool.py", "skill.json"]
+DIRS_TO_SYNC = ["tools", "prompts"]
+SKILL_DIRS = [
+    os.path.join(".opencode", "skills", "temporal_reasoning"),
+    os.path.join("skills", "temporal-reasoning"),
+]
+
+
+def _get_target_dir() -> str:
+    """Return install target: --target arg if provided, else cwd."""
+    if "--target" in sys.argv:
+        idx = sys.argv.index("--target")
+        if idx + 1 < len(sys.argv):
+            return os.path.abspath(sys.argv[idx + 1])
+    return os.getcwd()
 
 
 def check_python_version():
@@ -33,15 +48,15 @@ def check_python_version():
 def check_minigraf():
     """Check if minigraf CLI is installed, prompt to install if missing."""
     try:
-        result = subprocess.run(
-            ["minigraf", "--version"],
+        subprocess.run(
+            ["minigraf"],
+            input="",
             capture_output=True,
             text=True,
             timeout=10,
             check=True
         )
-        version = result.stdout.strip() or "unknown"
-        print(f"✓ minigraf CLI: {version}")
+        print("✓ minigraf CLI: found")
         return True
     except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         pass
@@ -145,21 +160,33 @@ def _write_last_update() -> None:
         f.write(datetime.now(timezone.utc).isoformat())
 
 
-def update_skill():
-    """Pull from GitHub and sync skill files."""
+def _sync_files(target_dir: str) -> None:
+    """Copy skill files and directories into each agent skill folder under target_dir."""
     import shutil
+    for rel_dir in SKILL_DIRS:
+        dest_dir = os.path.join(target_dir, rel_dir)
+        os.makedirs(dest_dir, exist_ok=True)
+        for fname in FILES_TO_SYNC:
+            src = os.path.join(REPO_DIR, fname)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(dest_dir, fname))
+        for dname in DIRS_TO_SYNC:
+            src_dir = os.path.join(REPO_DIR, dname)
+            if os.path.isdir(src_dir):
+                shutil.copytree(src_dir, os.path.join(dest_dir, dname), dirs_exist_ok=True)
+    synced = ", ".join(FILES_TO_SYNC + DIRS_TO_SYNC)
+    dirs = ", ".join(SKILL_DIRS)
+    print(f"✓ Synced [{synced}] → [{dirs}]")
 
-    repo_dir = os.path.dirname(os.path.abspath(__file__))
-    skill_dir = os.path.join(repo_dir, ".opencode", "skills", "temporal_reasoning")
 
+def update_skill(target_dir: str) -> bool:
+    """Pull from GitHub and sync skill files to target_dir."""
     print("Checking for skill updates...")
-
-    claude_skill_dir = os.path.join(repo_dir, "skills", "temporal-reasoning")
 
     try:
         result = subprocess.run(
             ["git", "pull", "origin", "master"],
-            cwd=repo_dir,
+            cwd=REPO_DIR,
             capture_output=True,
             text=True,
             timeout=30,
@@ -171,18 +198,10 @@ def update_skill():
 
         if result.stdout.strip() and "Already up to date" not in result.stdout:
             print("Pulling latest from GitHub...")
-            files_to_sync = ["SKILL.md"]
-            for fname in files_to_sync:
-                src = os.path.join(repo_dir, fname)
-                for dest_dir in [skill_dir, claude_skill_dir]:
-                    os.makedirs(dest_dir, exist_ok=True)
-                    dst = os.path.join(dest_dir, fname)
-                    if os.path.exists(src):
-                        shutil.copy2(src, dst)
-                print(f"✓ Synced {fname}")
-
+            _sync_files(target_dir)
             print("✓ Skill updated!")
         else:
+            _sync_files(target_dir)
             print("✓ Skill already up-to-date")
         return True
     except subprocess.CalledProcessError:
@@ -197,8 +216,16 @@ def update_skill():
 
 
 if __name__ == "__main__":
-    # Check for updates on first run or if week has passed
-    if should_update():
-        update_skill()
+    target_dir = _get_target_dir()
+    force = "--force" in sys.argv
+    if target_dir != REPO_DIR:
+        print(f"Installing into: {target_dir}")
+
+    # Pull from GitHub when forced or when weekly interval has elapsed
+    if force or should_update():
+        update_skill(target_dir)
+    else:
+        # Still sync files even if we skip git pull (e.g. fresh project install)
+        _sync_files(target_dir)
 
     main()

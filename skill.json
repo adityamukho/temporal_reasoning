@@ -5,6 +5,7 @@
   "tools": [
     "tools/query.json",
     "tools/transact.json",
+    "tools/retract.json",
     "tools/report_issue.json"
   ],
   "requires": {
