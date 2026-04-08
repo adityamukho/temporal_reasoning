@@ -26,9 +26,10 @@ Without this memory:
 4. User explains dependencies ("depends on...", "requires...", "needs...")
 5. Architecture or structure changes
 
-### ACKNOWLEDGE after query or transact:
+### ACKNOWLEDGE after query or transact or retract:
 - Query: "Let me check memory..." then cite specific facts from memory
 - Transact: "I've stored that in memory."
+- Retract: "I've removed that from memory (original preserved for history)."
 
 ## MEMORY CONTRACT
 
@@ -38,6 +39,11 @@ Without this memory:
 - constraint: priorities, tradeoffs, requirements, invariants
 - preference: likes, dislikes, prefers
 - dependency: what depends on what
+
+### REMOVE WHEN (call minigraf_retract):
+- user explicitly says "remove", "delete", "retract"
+- fact is incorrect or obsolete
+- replaced by cleaner version
 
 ### QUERY WHEN (call minigraf_query):
 - task references past work, decisions, or entities
@@ -56,6 +62,7 @@ Without this memory:
 
 ### CORRECT SYNTAX:
 - transact: (transact [[:entity :attr "value"] [:entity2 :attr2 "value2"]])
+- retract: (retract [[:entity :attr "value"]])
 - query: (query [:find ?x :where [?e :attr ?x]])
 
 ### ADVANCED QUERIES:

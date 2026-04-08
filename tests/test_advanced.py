@@ -6,6 +6,7 @@ Tests for functions not covered by test_minigraf_tool.py:
   - HTTP mode (_run_http via MINIGRAF_MODE=http)
   - import-time path behavior
   - report_issue — gh available, gh unavailable, invalid issue type
+  - retract() — reason required, success, returns tx count
 """
 
 import importlib
@@ -287,3 +288,40 @@ def test_report_issue_minigraf_bug_routes_to_minigraf_repo():
         result = report_issue("minigraf_bug", "core engine bug")
     assert result["ok"]
     assert result["repo"] == "adityamukho/minigraf"
+
+
+# ---------------------------------------------------------------------------
+# retract()
+# ---------------------------------------------------------------------------
+
+def test_retract_requires_reason(mock_minigraf, temp_graph):
+    """Test retract requires reason parameter."""
+    from minigraf_tool import retract
+    result = retract("[[:test :attr \"value\"]]", reason=None, graph_path=temp_graph)
+    assert not result["ok"]
+    assert "reason is required" in result["error"]
+
+
+def test_retract_reason_empty_fails(mock_minigraf, temp_graph):
+    """Test retract fails with empty reason."""
+    from minigraf_tool import retract
+    result = retract("[[:test :attr \"value\"]]", reason="", graph_path=temp_graph)
+    assert not result["ok"]
+
+
+def test_retract_success(mock_minigraf, temp_graph):
+    """Test retract succeeds."""
+    from minigraf_tool import retract
+    mock_minigraf.return_value = MagicMock(returncode=0, stdout="Retracted successfully (tx: 1)", stderr="")
+    result = retract("[[:test :person/name \"Alice\"]]", reason="No longer needed", graph_path=temp_graph)
+    assert result["ok"]
+    assert result["tx"] == "1"
+
+
+def test_retract_returns_tx_count(mock_minigraf, temp_graph):
+    """Test retract returns transaction count."""
+    from minigraf_tool import retract
+    mock_minigraf.return_value = MagicMock(returncode=0, stdout="Retracted successfully (tx: 42)", stderr="")
+    result = retract("[[:old :attr \"value\"]]", reason="Obsolete", graph_path=temp_graph)
+    assert result["ok"]
+    assert result["tx"] == "42"

@@ -123,7 +123,35 @@ Reason: Important project constraint
 Response: "Stored. Python 3.8+ requirement noted."
 
 ---
-Example 10: Track changes over time (valid-time)
+Example 10: Retract obsolete fact
+---
+User: "Remove the old phase-1 reference - we're in phase-2 now."
+
+Action: Retract the obsolete fact
+retract:
+[[:project/phase :phase/name "phase-1"]]
+Reason: Outdated - replaced by phase-2
+
+Response: "Removed phase-1 from memory (preserved in history)."
+
+---
+Example 11: Retract and replace with cleaner version
+---
+User: "The task description should not have the 'task' prefix in the attribute name."
+
+Action: Retract old fact, add clean version
+retract:
+[[:task/monitor-ci :task/description "old description"]]
+Reason: Replaced with cleaner :description attribute
+
+transact:
+[[:task/monitor-ci :description "new clean description"]]
+Reason: Cleaned attribute name
+
+Response: "Cleaned up the attribute name."
+
+---
+Example 12: Track changes over time (valid-time)
 ---
 User: "What was the team's structure in 2025?"
 
