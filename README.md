@@ -35,7 +35,7 @@ What it is NOT:
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────┐
-│              Minigraph CLI (>= 0.18.0)                  │
+│              Minigraf CLI (>= 0.18.0)                   │
 │         (https://github.com/adityamukho/minigraf)       │
 │   - Bi-temporal Datalog database                      │
 │   - Transaction time + Valid time                      │

@@ -17,7 +17,7 @@ result = query("[:find ?d :where [?e :decision/description ?d]]")
 
 ## Key Files
 
-- `minigraf_tool.py` - Python wrapper for minigraph CLI
+- `minigraf_tool.py` - Python wrapper for minigraf CLI
 - `SKILL.md` - Skill definition with all query syntax
 - `prompts/system.txt` - Behavioral prompts
 - `install.py` - Setup script (runs weekly updates)

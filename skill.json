@@ -8,7 +8,7 @@
     "tools/report_issue.json"
   ],
   "requires": {
-    "minigraf": ">=0.13.0"
+    "minigraf": ">=0.18.0"
   },
   "languages": ["python"],
   "environments": ["claude-code", "opencode", "codex"]

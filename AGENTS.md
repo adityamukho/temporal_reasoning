@@ -9,14 +9,14 @@ Persistent bi-temporal graph memory skill for AI coding agents. Prevents context
         ↓
 [ Python Skill Layer ]              ← this repo
         ↓
-[ Minigraf CLI ]                   ← must be on PATH (>= 0.13.0)
+[ Minigraf CLI ]                   ← must be on PATH (>= 0.18.0)
         ↓
 [ .graph file on disk ]
 ```
 
 ## Dependencies
 
-- **Minigraf >= 0.13.0** — install via: `cargo install minigraf`
+- **Minigraf >= 0.18.0** — install via: `cargo install minigraf`
 - **Python 3** — for the CLI wrapper
 
 ## Files
@@ -34,7 +34,8 @@ Persistent bi-temporal graph memory skill for AI coding agents. Prevents context
 ```python
 from minigraf_tool import query, transact
 
-transact("[[:decision/cache-strategy :decision/description \"use Redis\"]]")
+transact("[[:decision/cache-strategy :decision/description \"use Redis\"]]",
+         reason="Architecture decision for low-latency caching")
 result = query("[:find ?desc :where [?e :decision/description ?desc]]")
 ```
 
