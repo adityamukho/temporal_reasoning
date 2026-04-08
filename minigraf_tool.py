@@ -40,45 +40,15 @@ def _get_timeout() -> int:
 MINIGRAF_TIMEOUT = _get_timeout()
 
 
-def _resolve_default_graph_path() -> str:
-    """Resolve the default graph path without touching the filesystem."""
-    import platform
 
-    env_path = os.environ.get("MINIGRAF_GRAPH_PATH")
-    if env_path:
-        return env_path
-
-    system = platform.system()
-
-    if system == "Windows":
-        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~/AppData/Local"))
-        graph_dir = Path(base) / "temporal-reasoning"
-    elif system == "Darwin":
-        graph_dir = Path.home() / "Library" / "Application Support" / "temporal-reasoning"
-    else:
-        xdg_data = os.environ.get("XDG_DATA_HOME")
-        if xdg_data:
-            graph_dir = Path(xdg_data) / "temporal-reasoning"
-        else:
-            graph_dir = Path.home() / ".local" / "share" / "temporal-reasoning"
-
-    return str(graph_dir / "memory.graph")
-
-
-def _get_default_graph_path() -> str:
-    """Backwards-compatible wrapper for resolving the default graph path."""
-    return _resolve_default_graph_path()
-
-
-def _ensure_parent_dir(path: str) -> None:
-    """Create the parent directory for a graph path when a write is needed."""
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-
-
-DEFAULT_GRAPH_PATH = _resolve_default_graph_path()
 
 MINIGRAF_MODE = os.environ.get("MINIGRAF_MODE", "cli")
 MINIGRAF_HTTP_URL = os.environ.get("MINIGRAF_HTTP_URL", "http://localhost:8080")
+
+
+def _get_project_root_path() -> str:
+    """Get the default graph path (CWD memory.graph)."""
+    return str(Path.cwd() / "memory.graph")
 
 
 class MinigrafError(Exception):
@@ -133,6 +103,11 @@ def _run_minigraf(args: List[str], input_data: Optional[str] = None) -> Dict[str
         return {"ok": False, "error": str(e)}
 
 
+def _get_default_graph_path() -> str:
+    """Get the default graph path (project root memory.graph)."""
+    return _get_project_root_path()
+
+
 def query(
     datalog: str,
     as_of: Optional[Union[int, str]] = None,
@@ -149,14 +124,7 @@ def query(
     Returns:
         Dict with 'ok', 'results' (list of results), 'path' (graph path), and optional 'error'
     """
-    # Check for local memory.graph in current directory first (for backward compatibility)
-    local_path = os.path.join(os.getcwd(), "memory.graph")
-    if graph_path:
-        path = graph_path
-    elif os.path.exists(local_path):
-        path = local_path
-    else:
-        path = DEFAULT_GRAPH_PATH
+    path = graph_path or _get_project_root_path()
 
     if MINIGRAF_MODE == "http":
         # HTTP mode
@@ -170,17 +138,7 @@ def query(
         return {"ok": True, "results": data.get("results", []), "path": path, "mode": "http"}
 
     # CLI mode (original implementation)
-    if not os.path.exists(path):
-        return {"ok": False, "error": f"No graph file at {path}. Transact first."}
-
-    # Handle temporal query - require explicit :as-of in datalog
-    if as_of is not None and ":as-of" not in datalog:
-        return {
-            "ok": False,
-            "error": "as_of requires :as-of clause in datalog. "
-                     "Use: [:find ?x :as-of N :where [?e :attr ?x]]"
-        }
-
+    # Note: minigraf creates the file if it doesn't exist, so no pre-check needed
     full_query = f"(query {datalog})"
     result = _run_minigraf(["--file", path], input_data=full_query)
 
@@ -249,14 +207,7 @@ def transact(
     if not reason or not reason.strip():
         return {"ok": False, "error": "reason is required for all writes"}
 
-    # Check for local memory.graph in current directory first (for backward compatibility)
-    local_path = os.path.join(os.getcwd(), "memory.graph")
-    if graph_path:
-        path = graph_path
-    elif os.path.exists(local_path):
-        path = local_path
-    else:
-        path = DEFAULT_GRAPH_PATH
+    path = graph_path or _get_project_root_path()
 
     if MINIGRAF_MODE == "http":
         # HTTP mode
@@ -275,7 +226,6 @@ def transact(
 
     # CLI mode
     full_tx = f"(transact {facts})"
-    _ensure_parent_dir(path)
     result = _run_minigraf(["--file", path], input_data=full_tx)
 
     if not result.get("ok"):
@@ -315,14 +265,7 @@ def retract(
     if not reason or not reason.strip():
         return {"ok": False, "error": "reason is required for retract"}
 
-    # Check for local memory.graph in current directory first (for backward compatibility)
-    local_path = os.path.join(os.getcwd(), "memory.graph")
-    if graph_path:
-        path = graph_path
-    elif os.path.exists(local_path):
-        path = local_path
-    else:
-        path = get_graph_path()
+    path = graph_path or _get_project_root_path()
 
     full_tx = f'(retract [{facts}])'
 
@@ -369,14 +312,7 @@ def temporal_query(
 
 def reset(graph_path: Optional[str] = None) -> Dict[str, Any]:
     """Delete the graph file to start fresh."""
-    # Check for local memory.graph in current directory first (for backward compatibility)
-    local_path = os.path.join(os.getcwd(), "memory.graph")
-    if graph_path:
-        path = graph_path
-    elif os.path.exists(local_path):
-        path = local_path
-    else:
-        path = DEFAULT_GRAPH_PATH
+    path = graph_path or _get_project_root_path()
     if os.path.exists(path):
         os.remove(path)
         return {"ok": True, "deleted": path}
@@ -385,14 +321,7 @@ def reset(graph_path: Optional[str] = None) -> Dict[str, Any]:
 
 def export(graph_path: Optional[str] = None) -> Dict[str, Any]:
     """Export all facts from the graph to a JSON file."""
-    # Check for local memory.graph in current directory first (for backward compatibility)
-    local_path = os.path.join(os.getcwd(), "memory.graph")
-    if graph_path:
-        path = graph_path
-    elif os.path.exists(local_path):
-        path = local_path
-    else:
-        path = DEFAULT_GRAPH_PATH
+    path = graph_path or _get_project_root_path()
 
     if not os.path.exists(path):
         return {"ok": False, "error": f"No graph file at {path}"}
@@ -430,14 +359,7 @@ def _safe_datalog_token(token: str) -> bool:
 
 def import_data(data: Dict, graph_path: Optional[str] = None) -> Dict[str, Any]:
     """Import facts from exported JSON data."""
-    # Check for local memory.graph in current directory first (for backward compatibility)
-    local_path = os.path.join(os.getcwd(), "memory.graph")
-    if graph_path:
-        path = graph_path
-    elif os.path.exists(local_path):
-        path = local_path
-    else:
-        path = DEFAULT_GRAPH_PATH
+    path = graph_path or _get_project_root_path()
 
     facts_list = data.get("facts", [])
     if not facts_list:
@@ -474,8 +396,8 @@ def import_data(data: Dict, graph_path: Optional[str] = None) -> Dict[str, Any]:
 
 
 def get_graph_path() -> str:
-    """Return the default graph path."""
-    return DEFAULT_GRAPH_PATH
+    """Return the default graph path (project root memory.graph)."""
+    return _get_project_root_path()
 
 
 def main() -> None:

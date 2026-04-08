@@ -12,6 +12,7 @@ Tests for functions not covered by test_minigraf_tool.py:
 import importlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from urllib.parse import urlparse
@@ -60,46 +61,18 @@ def test_get_graph_path_returns_string():
     assert len(path) > 0
 
 
-def test_get_graph_path_env_override(tmp_path):
-    """Test that MINIGRAF_GRAPH_PATH env var overrides default."""
-    custom = str(tmp_path / "custom.graph")
-    with patch.dict(os.environ, {"MINIGRAF_GRAPH_PATH": custom}):
-        result = minigraf_tool._get_default_graph_path()
-    assert result == custom
+def test_get_graph_path_always_returns_cwd(tmp_path, monkeypatch):
+    """Test that get_graph_path returns CWD memory.graph."""
+    monkeypatch.chdir(tmp_path)
+    result = minigraf_tool.get_graph_path()
+    assert result == str(tmp_path / "memory.graph")
 
 
-def test_import_does_not_create_default_graph_dir(tmp_path):
-    """Test that importing module doesn't create graph directory."""
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    module_name = "minigraf_tool"
-    original = sys.modules.pop(module_name, None)
-
-    try:
-        with patch.dict(os.environ, {"HOME": str(fake_home)}, clear=False), \
-             patch("pathlib.Path.mkdir", side_effect=AssertionError("mkdir should not run during import")):
-            imported = importlib.import_module(module_name)
-    finally:
-        sys.modules.pop(module_name, None)
-        if original is not None:
-            sys.modules[module_name] = original
-
-    expected = fake_home / ".local" / "share" / "temporal-reasoning" / "memory.graph"
-    assert imported.DEFAULT_GRAPH_PATH == str(expected)
-
-
-def test_transact_creates_default_graph_parent_dir_lazily(tmp_path, mock_minigraf):
-    """Test that transact creates parent directory on first write."""
-    fake_graph = tmp_path / "nested" / "memory.graph"
-
-    with patch.object(minigraf_tool, "DEFAULT_GRAPH_PATH", str(fake_graph)):
-        result = minigraf_tool.transact(
-            "[[:test :person/name \"Alice\"]]",
-            reason="create graph on first write"
-        )
-
-    assert result["ok"]
-    assert fake_graph.parent.exists()
+def test_project_root_detection(tmp_path, monkeypatch):
+    """Test that project root is simply CWD."""
+    monkeypatch.chdir(tmp_path)
+    result = minigraf_tool._get_project_root_path()
+    assert result == str(tmp_path / "memory.graph")
 
 
 # ---------------------------------------------------------------------------
