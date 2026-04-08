@@ -99,10 +99,6 @@ def _get_current_repo() -> Optional[Dict[str, str]]:
     return None
 
 
-def _get_repo_info() -> Optional[Dict[str, str]]:
-    """Get current repo info using gh."""
-    return _get_current_repo()
-
 
 def report_issue(
     issue_type: str,

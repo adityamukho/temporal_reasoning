@@ -15,18 +15,14 @@ fn get_graph_path() -> String {
     GRAPH_PATH
         .get_or_init(|| {
             std::env::var("MINIGRAF_GRAPH_PATH").unwrap_or_else(|_| {
-                if std::path::Path::new("/tmp").exists() {
-                    "/tmp/minigraf_memory.graph".to_string()
-                } else {
-                    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-                    std::path::Path::new(&home)
-                        .join(".local")
-                        .join("share")
-                        .join("temporal-reasoning")
-                        .join("memory.graph")
-                        .to_string_lossy()
-                        .to_string()
-                }
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                std::path::Path::new(&home)
+                    .join(".local")
+                    .join("share")
+                    .join("temporal-reasoning")
+                    .join("memory.graph")
+                    .to_string_lossy()
+                    .to_string()
             })
         })
         .clone()

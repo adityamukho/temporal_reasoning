@@ -175,9 +175,6 @@ def query(datalog: str, as_of: Optional[Union[int, str]] = None, graph_path: Opt
     # Parse results - Note: verified against minigraf v0.18.0
     # Output format: header line, separator line (---), then data lines
     # Header contains ?variable or :keyword tokens
-    if len(lines) < 3:
-        return {"ok": True, "results": []}
-    
     result_header = lines[0]
     separator = lines[1]
 
