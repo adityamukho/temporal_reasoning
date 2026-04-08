@@ -5,7 +5,8 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 static GRAPH_PATH: OnceLock<String> = OnceLock::new();
@@ -81,10 +82,23 @@ async fn query_handler(Json(payload): Json<QueryRequest>) -> Result<Json<serde_j
 
     let input = format!("(query {})", datalog);
 
-    let output = Command::new(&minigraf)
+    let mut child = Command::new(&minigraf)
         .args(["--file", &path])
-        .input(input)
-        .output()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    child
+        .stdin
+        .as_mut()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?
+        .write_all(input.as_bytes())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let output = child
+        .wait_with_output()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if !output.status.success() {
@@ -112,10 +126,23 @@ async fn transact_handler(Json(payload): Json<TransactRequest>) -> Result<Json<s
 
     let input = format!("(transact {})", payload.facts);
 
-    let output = Command::new(&minigraf)
+    let mut child = Command::new(&minigraf)
         .args(["--file", &path])
-        .input(input)
-        .output()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    child
+        .stdin
+        .as_mut()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?
+        .write_all(input.as_bytes())
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let output = child
+        .wait_with_output()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if !output.status.success() {
