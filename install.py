@@ -125,10 +125,20 @@ def should_update():
             if not content:
                 return True
             last_update = datetime.fromisoformat(content)
-    except (ValueError, IOError):
+    except ValueError:
+        # Legacy float epoch or corrupt file — treat as expired and let the
+        # next successful update_skill() write a fresh ISO 8601 timestamp.
+        return True
+    except IOError:
         return True
 
     return (datetime.now(timezone.utc) - last_update).total_seconds() > UPDATE_INTERVAL
+
+
+def _write_last_update() -> None:
+    """Write the current UTC time as ISO 8601 to the last-update file."""
+    with open(LAST_UPDATE_FILE, 'w') as f:
+        f.write(datetime.now(timezone.utc).isoformat())
 
 
 def update_skill():
@@ -148,30 +158,29 @@ def update_skill():
             text=True,
             timeout=30
         )
-        if result.returncode == 0 and result.stdout.strip():
-            print("Pulling latest from GitHub...")
-            os.makedirs(skill_dir, exist_ok=True)
-            
-            # Sync all skill files
-            files_to_sync = [
-                "SKILL.md",
-            ]
-            
-            for fname in files_to_sync:
-                src = os.path.join(repo_dir, fname)
-                dst = os.path.join(skill_dir, fname)
-                if os.path.exists(src):
-                    shutil.copy2(src, dst)
-                    print(f"✓ Synced {fname}")
-            
-            # Record update time
-            with open(LAST_UPDATE_FILE, 'w') as f:
-                f.write(datetime.now(timezone.utc).isoformat())
-            
-            print("✓ Skill updated!")
+        if result.returncode == 0:
+            # Always record the check time so the weekly throttle resets,
+            # regardless of whether git pull fetched new commits.
+            _write_last_update()
+
+            if result.stdout.strip() and "Already up to date" not in result.stdout:
+                print("Pulling latest from GitHub...")
+                os.makedirs(skill_dir, exist_ok=True)
+
+                files_to_sync = ["SKILL.md"]
+                for fname in files_to_sync:
+                    src = os.path.join(repo_dir, fname)
+                    dst = os.path.join(skill_dir, fname)
+                    if os.path.exists(src):
+                        shutil.copy2(src, dst)
+                        print(f"✓ Synced {fname}")
+
+                print("✓ Skill updated!")
+            else:
+                print("✓ Skill already up-to-date")
             return True
         else:
-            print("✓ Skill already up-to-date")
+            print("ERROR: git pull failed")
             return False
     except Exception as e:
         print(f"ERROR: Could not update skill: {e}")
