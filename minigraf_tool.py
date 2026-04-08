@@ -10,6 +10,7 @@ Usage:
     HTTP mode:           MINIGRAF_MODE=http python minigraf_tool.py ...
 """
 
+import re
 import subprocess
 import json
 import os
@@ -290,21 +291,55 @@ def export(graph_path: Optional[str] = None) -> Dict[str, Any]:
     return {"ok": True, "data": export_data}
 
 
+# Allowlist for Datalog tokens interpolated into import_data() fact strings.
+# Permits: keywords (:ns/name), quoted strings ("..."), integers, floats, booleans.
+_SAFE_DATALOG_TOKEN = re.compile(
+    r'^(?:'
+    r':[a-zA-Z0-9_/-]+'        # keyword  e.g. :decision/description
+    r'|"(?:[^"\\]|\\.)*"'       # quoted string  e.g. "use Redis"
+    r'|-?\d+(?:\.\d+)?'         # number  e.g. 42 or 3.14
+    r'|true|false'              # boolean
+    r')$'
+)
+
+
+def _safe_datalog_token(token: str) -> bool:
+    """Return True if token is safe to interpolate into a Datalog fact string."""
+    return bool(_SAFE_DATALOG_TOKEN.match(str(token)))
+
+
 def import_data(data: Dict, graph_path: Optional[str] = None) -> Dict[str, Any]:
     """Import facts from exported JSON data."""
     path = graph_path or DEFAULT_GRAPH_PATH
-    
+
     facts_list = data.get("facts", [])
     if not facts_list:
         return {"ok": False, "error": "No facts to import"}
-    
+
+    succeeded = 0
+    failed = 0
+
     for fact in facts_list:
-        if len(fact) >= 3:
-            entity, attr, value = fact[0], fact[1], fact[2]
-            facts = f"[[{entity} {attr} {value}]]"
-            transact(facts, reason=f"Import from backup", graph_path=path)
-    
-    return {"ok": True, "imported": len(facts_list)}
+        if len(fact) < 3:
+            logger.warning("Skipping malformed fact (expected 3 fields): %s", fact)
+            failed += 1
+            continue
+
+        entity, attr, value = str(fact[0]), str(fact[1]), str(fact[2])
+
+        if not all(_safe_datalog_token(t) for t in (entity, attr, value)):
+            logger.warning("Skipping fact with unsafe token values: %s", fact)
+            failed += 1
+            continue
+
+        result = transact(f"[[{entity} {attr} {value}]]", reason="Import from backup", graph_path=path)
+        if result.get("ok"):
+            succeeded += 1
+        else:
+            logger.error("Failed to import fact %s: %s", fact, result.get("error"))
+            failed += 1
+
+    return {"ok": True, "imported": succeeded, "failed": failed}
 
 
 def get_graph_path() -> str:
