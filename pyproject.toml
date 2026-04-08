@@ -44,6 +44,10 @@ py-modules = ["minigraf_tool"]
 line-length = 100
 target-version = "py38"
 
+[tool.pylint.messages_control]
+max-line-length = 100
+disable = ["C0111", "C0301", "C0303", "C0411", "C0413", "C0415", "R0801", "W0212", "W0611", "W0621"]
+
 [tool.black]
 line-length = 100
 target-version = ["py38", "py39", "py310", "py311", "py312"]
