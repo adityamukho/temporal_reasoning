@@ -277,6 +277,48 @@ def transact(
     return {"ok": True, "output": output, "path": path, "mode": "cli"}
 
 
+def retract(
+    facts: str,
+    reason: Optional[str] = None,
+    graph_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Retract facts from the graph memory.
+
+    Args:
+        facts: Datalog retract string with facts to remove
+        reason: Why this fact is being retracted
+        graph_path: Optional path to .graph file
+
+    Returns:
+        Dict with 'ok', 'tx' (transaction count), and optional 'error'
+    """
+    if not reason or not reason.strip():
+        return {"ok": False, "error": "reason is required for retract"}
+
+    path = graph_path or get_graph_path()
+    full_tx = f'(retract [{facts}])'
+
+    result = _run_minigraf(["--file", path], input_data=full_tx)
+
+    if not result.get("ok"):
+        return result
+
+    output = result["output"]
+
+    if "Retracted" in output or "successfully" in output:
+        tx_match = output.split("tx:")[1].strip().rstrip(")") if "tx:" in output else "unknown"
+        return {
+            "ok": True,
+            "tx": tx_match,
+            "reason": reason,
+            "path": path,
+            "mode": "cli"
+        }
+
+    return {"ok": True, "output": output, "path": path, "mode": "cli"}
+
+
 def temporal_query(
     datalog: str,
     as_of: Union[int, str],
