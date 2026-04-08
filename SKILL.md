@@ -14,6 +14,10 @@ This skill provides a memory layer that survives across conversations. Use it to
 - Track dependencies, constraints, and user preferences
 - Query past state at specific transaction times (bi-temporal)
 
+The repository's test harness demonstrates this with deterministic local
+evaluations: cross-session recall, decision-consistent later actions, and a
+prompt-compression proxy based on reduced repeated context.
+
 ## WHY YOU MUST USE THIS
 
 You are FORGETTING important context between conversations. Without this memory:

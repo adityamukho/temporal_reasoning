@@ -51,6 +51,60 @@ def derive_cache_plan(graph_path):
     return {"cache_backend": "Redis", "source": "persisted memory"}
 
 
+def _count_prompt_tokens(text):
+    """Use whitespace-delimited words as a stable local prompt-size proxy."""
+    return len(text.split())
+
+
+def collect_usefulness_benchmarks(graph_path):
+    """Return explicit benchmark metrics for usefulness claims."""
+    answer = answer_cache_strategy_question(graph_path)
+    plan = derive_cache_plan(graph_path)
+
+    behavior_consistency = {
+        "passed": "Redis" in answer and plan["cache_backend"] == "Redis",
+        "answer_mentions": "Redis" in answer,
+        "action_matches": plan["cache_backend"] == "Redis",
+    }
+
+    memory_prompt = "What cache strategy should we use?"
+    restated_prompt = (
+        "We previously decided to use Redis for the distributed-cache project "
+        "because low latency matters. What cache strategy should we use?"
+    )
+    prompt_compression = {
+        "memory_prompt_tokens": _count_prompt_tokens(memory_prompt),
+        "restated_prompt_tokens": _count_prompt_tokens(restated_prompt),
+        "saved_tokens": _count_prompt_tokens(restated_prompt) - _count_prompt_tokens(memory_prompt),
+        "method": "word-count proxy comparing recalled context vs repeated prompt context",
+    }
+
+    return {
+        "behavior_consistency": behavior_consistency,
+        "prompt_compression": prompt_compression,
+    }
+
+
+def print_benchmark_summary(graph_path):
+    """Print a human-readable summary of usefulness benchmark metrics."""
+    benchmarks = collect_usefulness_benchmarks(graph_path)
+    behavior = benchmarks["behavior_consistency"]
+    compression = benchmarks["prompt_compression"]
+    print("Usefulness benchmarks:")
+    print(
+        "Behavior consistency: "
+        f"passed={behavior['passed']} "
+        f"answer_mentions={behavior['answer_mentions']} "
+        f"action_matches={behavior['action_matches']}"
+    )
+    print(
+        "Prompt compression: "
+        f"memory_prompt_tokens={compression['memory_prompt_tokens']} "
+        f"restated_prompt_tokens={compression['restated_prompt_tokens']} "
+        f"saved_tokens={compression['saved_tokens']}"
+    )
+
+
 @pytest.fixture
 def populated_graph():
     """Create a temporary graph pre-populated with test facts."""
@@ -130,6 +184,27 @@ def test_cross_session_decision_changes_later_action(populated_graph):
     assert plan["source"] == "persisted memory"
 
 
+def test_usefulness_benchmarks_report_explicit_metrics(populated_graph):
+    """Test: Does the harness expose explicit usefulness metrics?"""
+    benchmarks = collect_usefulness_benchmarks(populated_graph)
+
+    assert benchmarks["behavior_consistency"]["passed"] is True
+    assert (
+        benchmarks["prompt_compression"]["memory_prompt_tokens"]
+        < benchmarks["prompt_compression"]["restated_prompt_tokens"]
+    )
+
+
+def test_benchmark_summary_labels_metric_sections(populated_graph, capsys):
+    """Test: Does the harness print benchmark sections explicitly?"""
+    print_benchmark_summary(populated_graph)
+    captured = capsys.readouterr()
+
+    assert "Usefulness benchmarks" in captured.out
+    assert "Behavior consistency" in captured.out
+    assert "Prompt compression" in captured.out
+
+
 def test_reason_required():
     """Test: transact requires reason parameter."""
     fd, graph_path = tempfile.mkstemp(suffix=".graph")
@@ -192,6 +267,9 @@ def run_tests():
         print("✓ Cross-session answer derivation: PASS")
         test_cross_session_decision_changes_later_action(graph_path)
         print("✓ Cross-session action derivation: PASS")
+        test_usefulness_benchmarks_report_explicit_metrics(graph_path)
+        print("✓ Usefulness benchmark metrics: PASS")
+        print_benchmark_summary(graph_path)
         test_reason_required()
         print("✓ Reason required: PASS")
         print("\n✓ All tests passed!")

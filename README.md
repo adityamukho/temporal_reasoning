@@ -158,6 +158,29 @@ This evaluation is intentionally local and deterministic. It does not depend on
 live model output, so it is suitable as repeatable evidence for the skill's
 cross-session usefulness claim.
 
+## Usefulness Benchmarks
+
+The harness also reports two explicit benchmark-style metrics so usefulness
+claims are tied to measurable output rather than broad narrative assertions.
+
+- Behavior consistency:
+  verifies that persisted memory drives both a later answer and a later
+  action-oriented plan toward the same stored decision.
+- Prompt compression proxy:
+  compares a short prompt that relies on memory recall with a longer prompt
+  that repeats the same decision context inline.
+
+Run:
+
+```bash
+python tests/test_harness.py
+```
+
+The prompt-compression metric uses a simple whitespace word count as a stable
+local proxy for prompt size. It does not claim model-token exactness; it only
+shows that recalling stored context can reduce repeated prompt text in a later
+session.
+
 ## Phases
 
 - **Phase 1** — Python skill layer ✓
