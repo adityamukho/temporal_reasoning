@@ -38,7 +38,7 @@ dev = [
 temporal-reasoning = "minigraf_tool:main"
 
 [tool.setuptools]
-packages = ["minigraf_tool"]
+py-modules = ["minigraf_tool"]
 
 [tool.ruff]
 line-length = 100
