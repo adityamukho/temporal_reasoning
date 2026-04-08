@@ -13,6 +13,7 @@ Automatically routes issues to the correct repo:
 import subprocess
 import sys
 import logging
+import json
 from typing import Dict, Optional
 
 logger = logging.getLogger("minigraf.report_issue")
@@ -26,7 +27,7 @@ MINIGRAF_REPO = "adityamukho/minigraf"
 def _is_minigraf_related(description: str, error: str = "", datalog: str = "") -> bool:
     """Determine if issue is related to minigraf core vs the skill wrapper."""
     combined = f"{description} {error} {datalog}".lower()
-    
+
     minigraf_indicators = [
         "execution error",
         "parse error",
@@ -40,7 +41,7 @@ def _is_minigraf_related(description: str, error: str = "", datalog: str = "") -
         "empty result",
         "no results found",
     ]
-    
+
     wrapper_indicators = [
         "minigraf_tool.py",
         "python wrapper",
@@ -49,10 +50,10 @@ def _is_minigraf_related(description: str, error: str = "", datalog: str = "") -
         "cli wrapper",
         "http server",
     ]
-    
+
     minigraf_score = sum(1 for ind in minigraf_indicators if ind in combined)
     wrapper_score = sum(1 for ind in wrapper_indicators if ind in combined)
-    
+
     return minigraf_score > wrapper_score
 
 
@@ -61,7 +62,7 @@ def _get_target_repo(is_minigraf_bug: bool) -> Optional[Dict[str, str]]:
     if is_minigraf_bug:
         parts = MINIGRAF_REPO.split("/")
         return {"owner": parts[0], "name": parts[1]}
-    
+
     return _get_current_repo()
 
 
@@ -71,10 +72,11 @@ def _check_gh_available() -> bool:
         subprocess.run(
             ["gh", "--version"],
             capture_output=True,
-            timeout=5
+            timeout=5,
+            check=True
         )
         return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
         return False
 
 
@@ -85,16 +87,16 @@ def _get_current_repo() -> Optional[Dict[str, str]]:
             ["gh", "repo", "view", "--json", "owner,name"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            check=True
         )
         if result.returncode == 0:
-            import json
             data = json.loads(result.stdout)
             return {
                 "owner": data.get("owner", {}).get("login", ""),
                 "name": data.get("name", "")
             }
-    except Exception:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         pass
     return None
 
@@ -123,33 +125,33 @@ def report_issue(
             "ok": False,
             "error": f"Invalid issue_type. Must be one of: {VALID_ISSUE_TYPES}"
         }
-    
+
     is_minigraf_bug = _is_minigraf_related(description, error or "", datalog or "")
     if issue_type == "minigraf_bug":
         is_minigraf_bug = True
-    
+
     target_repo = _get_target_repo(is_minigraf_bug)
     if target_repo:
         repo_name = f"{target_repo['owner']}/{target_repo['name']}"
     else:
         repo_name = "unknown"
-    
+
     body_parts = [f"**Description:** {description}"]
-    
+
     if datalog:
         body_parts.append(f"\n**Datalog:**\n```\n{datalog}\n```")
-    
+
     if error:
         body_parts.append(f"\n**Error:**\n```\n{error}\n```")
-    
+
     if is_minigraf_bug:
         body_parts.append(f"\n*Auto-routed to minigraf repo based on content*")
-    
+
     body = "\n".join(body_parts)
     title = f"[minigraf] {issue_type}: {description[:50]}"
-    
+
     gh_available = _check_gh_available()
-    
+
     if not gh_available:
         logger.warning(
             "GitHub CLI (gh) not available. Issue not filed.\n"
@@ -182,7 +184,8 @@ def report_issue(
             ],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
+            check=True
         )
 
         if result.returncode == 0:
@@ -200,8 +203,10 @@ def report_issue(
             }
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "gh command timed out"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except subprocess.CalledProcessError as e:
+        return {"ok": False, "error": e.stderr.strip() if e.stderr else "gh command failed"}
+    except FileNotFoundError:
+        return {"ok": False, "error": "gh not found"}
 
 
 if __name__ == "__main__":

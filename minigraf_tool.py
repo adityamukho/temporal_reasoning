@@ -83,7 +83,6 @@ MINIGRAF_HTTP_URL = os.environ.get("MINIGRAF_HTTP_URL", "http://localhost:8080")
 
 class MinigrafError(Exception):
     """Error from minigraf operations."""
-    pass
 
 
 def _run_http(endpoint: str, data: Dict) -> Dict[str, Any]:
@@ -105,7 +104,7 @@ def _run_http(endpoint: str, data: Dict) -> Dict[str, Any]:
 
 def _run_minigraf(args: List[str], input_data: Optional[str] = None) -> Dict[str, Any]:
     """Run minigraf CLI and return parsed result.
-    
+
     Note: Uses list args (not shell=True) to prevent shell injection.
     Timeout is configurable via MINIGRAF_TIMEOUT env var (default 30s).
     """
@@ -116,18 +115,18 @@ def _run_minigraf(args: List[str], input_data: Optional[str] = None) -> Dict[str
             input=input_data,
             capture_output=True,
             text=True,
-            timeout=MINIGRAF_TIMEOUT
+            timeout=MINIGRAF_TIMEOUT,
+            check=True
         )
-        
-        if result.returncode != 0:
-            error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
-            return {"ok": False, "error": error_msg or "Unknown error"}
-        
+
         return {"ok": True, "output": result.stdout.strip()}
     except FileNotFoundError:
         return {"ok": False, "error": f"minigraf not found. Is it installed and on PATH?"}
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "minigraf command timed out"}
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.strip() if e.stderr else e.stdout.strip()
+        return {"ok": False, "error": error_msg or "Unknown error"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -135,17 +134,17 @@ def _run_minigraf(args: List[str], input_data: Optional[str] = None) -> Dict[str
 def query(datalog: str, as_of: Optional[Union[int, str]] = None, graph_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Query the graph memory with a Datalog query.
-    
+
     Args:
         datalog: A valid Datalog query string
         as_of: Optional transaction count to query as of (temporal query)
         graph_path: Optional path to .graph file. Uses default temp location if not provided.
-    
+
     Returns:
         Dict with 'ok', 'results' (list of results), 'path' (graph path), and optional 'error'
     """
     path = graph_path or DEFAULT_GRAPH_PATH
-    
+
     if MINIGRAF_MODE == "http":
         # HTTP mode
         payload = {"datalog": datalog}
@@ -156,33 +155,33 @@ def query(datalog: str, as_of: Optional[Union[int, str]] = None, graph_path: Opt
             return result
         data = result.get("data", {})
         return {"ok": True, "results": data.get("results", []), "path": path, "mode": "http"}
-    
+
     # CLI mode (original implementation)
     if not os.path.exists(path):
         return {"ok": False, "error": f"No graph file at {path}. Transact first."}
-    
+
     # Handle temporal query - require explicit :as-of in datalog
     if as_of is not None and ":as-of" not in datalog:
         return {
             "ok": False,
             "error": "as_of requires :as-of clause in datalog. Use: [:find ?x :as-of N :where [?e :attr ?x]]"
         }
-    
+
     full_query = f"(query {datalog})"
     result = _run_minigraf(["--file", path], input_data=full_query)
-    
+
     if not result.get("ok"):
         return result
-    
+
     output = result["output"]
-    
+
     if "No results found" in output:
         return {"ok": True, "results": []}
-    
+
     lines = output.split("\n")
     if len(lines) < 3:
         return {"ok": True, "results": []}
-    
+
     # Parse results - Note: verified against minigraf v0.18.0
     # Output format: header line, separator line (---), then data lines
     # Header contains ?variable or :keyword tokens
@@ -197,40 +196,40 @@ def query(datalog: str, as_of: Optional[Union[int, str]] = None, graph_path: Opt
     col_count = sum(1 for t in header_tokens if t.startswith("?") or t.startswith(":"))
     if col_count == 0:
         return {"ok": False, "error": f"Unexpected output format from minigraf: {output[:200]}"}
-    
+
     results = []
-    
+
     for line in lines[2:]:
         stripped = line.strip()
         if not stripped or stripped.startswith("---"):
             continue
         if "No results" in stripped or stripped.endswith("found."):
             continue
-        
+
         values = [v.strip() for v in line.split("|")]
         if len(values) >= col_count:
             results.append(values[:col_count])
-    
+
     return {"ok": True, "results": results}
 
 
 def transact(facts: str, reason: Optional[str] = None, graph_path: Optional[str] = None) -> Dict[str, Any]:
     """
     Store facts in the graph memory.
-    
+
     Args:
         facts: Datalog transact string with facts to store
         reason: Why this fact deserves long-term storage (for future validation)
         graph_path: Optional path to .graph file. Uses default temp location if not provided.
-    
+
     Returns:
         Dict with 'ok', 'tx' (transaction count), and optional 'error'
     """
     if not reason or not reason.strip():
         return {"ok": False, "error": "reason is required for all writes"}
-    
+
     path = graph_path or DEFAULT_GRAPH_PATH
-    
+
     if MINIGRAF_MODE == "http":
         # HTTP mode
         payload = {"facts": facts, "reason": reason}
@@ -239,35 +238,35 @@ def transact(facts: str, reason: Optional[str] = None, graph_path: Optional[str]
             return result
         data = result.get("data", {})
         return {"ok": True, "tx": data.get("tx", "unknown"), "reason": reason, "path": path, "mode": "http"}
-    
+
     # CLI mode
     full_tx = f"(transact {facts})"
     _ensure_parent_dir(path)
     result = _run_minigraf(["--file", path], input_data=full_tx)
-    
+
     if not result.get("ok"):
         return result
-    
+
     output = result["output"]
-    
+
     if "Transacted successfully" in output:
         tx_match = output.split("tx:")[1].strip().rstrip(")") if "tx:" in output else "unknown"
         return {"ok": True, "tx": tx_match, "reason": reason, "path": path, "mode": "cli"}
-    
+
     return {"ok": True, "output": output, "path": path, "mode": "cli"}
 
 
 def temporal_query(datalog: str, as_of: Union[int, str], graph_path: Optional[str] = None) -> Dict[str, Any]:
     """
     DEPRECATED: Use query() with explicit :as-of in datalog instead.
-    
+
     Query the graph as of a specific transaction time.
-    
+
     Args:
         datalog: A valid Datalog query string with :as-of clause
         as_of: Ignored (kept for backwards compatibility)
         graph_path: Optional path to .graph file
-    
+
     Returns:
         Dict with query results
     """
@@ -286,21 +285,21 @@ def reset(graph_path: Optional[str] = None) -> Dict[str, Any]:
 def export(graph_path: Optional[str] = None) -> Dict[str, Any]:
     """Export all facts from the graph to a JSON file."""
     path = graph_path or DEFAULT_GRAPH_PATH
-    
+
     if not os.path.exists(path):
         return {"ok": False, "error": f"No graph file at {path}"}
-    
+
     result = query("[:find ?e ?a ?v :where [?e ?a ?v]]", graph_path=path)
     if not result.get("ok"):
         return result
-    
+
     export_data = {
         "version": "1.0",
         "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "graph_path": path,
         "facts": result.get("results", [])
     }
-    
+
     return {"ok": True, "data": export_data}
 
 

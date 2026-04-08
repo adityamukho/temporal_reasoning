@@ -12,7 +12,6 @@ Usage:
 import sys
 import subprocess
 import os
-import time
 from datetime import datetime, timezone
 
 UPDATE_INTERVAL = 7 * 24 * 60 * 60  # 7 days in seconds
@@ -36,15 +35,13 @@ def check_minigraf():
             ["minigraf", "--version"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
+            check=True
         )
-        if result.returncode == 0:
-            version = result.stdout.strip() or "unknown"
-            print(f"✓ minigraf CLI: {version}")
-            return True
-    except FileNotFoundError:
-        pass
-    except subprocess.TimeoutExpired:
+        version = result.stdout.strip() or "unknown"
+        print(f"✓ minigraf CLI: {version}")
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         pass
 
     print("✗ minigraf CLI not found")
@@ -97,7 +94,8 @@ def main():
         print()
         print("Usage:")
         print("  # As Python module:")
-        print("  python -c \"from minigraf_tool import query, transact; print(query('[:find ?e :where [?e :test/name]]'))\"")
+        msg = "from minigraf_tool import query, transact; print(query('[:find ?e :where [?e :test/name]]'))"
+        print(f"  python -c \"{msg}\"")
         print()
         print("  # As CLI:")
         print("  python minigraf_tool.py query '[:find ?e :where [?e :test/name]]'")
@@ -105,8 +103,10 @@ def main():
         print()
         print("  # Import and use in code:")
         print("  from minigraf_tool import query, transact")
-        print("  transact('[[:decision :arch/cache-strategy \\\"Redis\\\"]]', reason='fast in-memory caching')")
-        print("  result = query('[:find ?s :where [_ :arch/cache-strategy ?s]]')")
+        tx_msg = "transact('[[:decision :arch/cache-strategy \\\"Redis\\\"]]', reason='fast in-memory caching')"
+        print(f"  {tx_msg}")
+        q_msg = "result = query('[:find ?s :where [_ :arch/cache-strategy ?s]]')"
+        print(f"  {q_msg}")
     else:
         print("=" * 50)
         print("✗ Setup incomplete - fix errors above")
@@ -118,7 +118,7 @@ def should_update():
     """Check if update should run (no more than once a week)."""
     if not os.path.exists(LAST_UPDATE_FILE):
         return True
-    
+
     try:
         with open(LAST_UPDATE_FILE, 'r') as f:
             content = f.read().strip()
@@ -144,46 +144,49 @@ def _write_last_update() -> None:
 def update_skill():
     """Pull from GitHub and sync skill files."""
     import shutil
-    
+
     repo_dir = os.path.dirname(os.path.abspath(__file__))
     skill_dir = os.path.join(repo_dir, ".opencode", "skills", "temporal-reasoning")
-    
+
     print("Checking for skill updates...")
-    
+
     try:
         result = subprocess.run(
             ["git", "pull", "origin", "master"],
             cwd=repo_dir,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
+            check=True
         )
-        if result.returncode == 0:
-            # Always record the check time so the weekly throttle resets,
-            # regardless of whether git pull fetched new commits.
-            _write_last_update()
+        # Always record the check time so the weekly throttle resets,
+        # regardless of whether git pull fetched new commits.
+        _write_last_update()
 
-            if result.stdout.strip() and "Already up to date" not in result.stdout:
-                print("Pulling latest from GitHub...")
-                os.makedirs(skill_dir, exist_ok=True)
+        if result.stdout.strip() and "Already up to date" not in result.stdout:
+            print("Pulling latest from GitHub...")
+            os.makedirs(skill_dir, exist_ok=True)
 
-                files_to_sync = ["SKILL.md"]
-                for fname in files_to_sync:
-                    src = os.path.join(repo_dir, fname)
-                    dst = os.path.join(skill_dir, fname)
-                    if os.path.exists(src):
-                        shutil.copy2(src, dst)
-                        print(f"✓ Synced {fname}")
+            files_to_sync = ["SKILL.md"]
+            for fname in files_to_sync:
+                src = os.path.join(repo_dir, fname)
+                dst = os.path.join(skill_dir, fname)
+                if os.path.exists(src):
+                    shutil.copy2(src, dst)
+                    print(f"✓ Synced {fname}")
 
-                print("✓ Skill updated!")
-            else:
-                print("✓ Skill already up-to-date")
-            return True
+            print("✓ Skill updated!")
         else:
-            print("ERROR: git pull failed")
-            return False
-    except Exception as e:
-        print(f"ERROR: Could not update skill: {e}")
+            print("✓ Skill already up-to-date")
+        return True
+    except subprocess.CalledProcessError:
+        print("ERROR: git pull failed")
+        return False
+    except FileNotFoundError:
+        print("ERROR: git not found")
+        return False
+    except subprocess.TimeoutExpired:
+        print("ERROR: git pull timed out")
         return False
 
 
@@ -191,5 +194,5 @@ if __name__ == "__main__":
     # Check for updates on first run or if week has passed
     if should_update():
         update_skill()
-    
+
     main()

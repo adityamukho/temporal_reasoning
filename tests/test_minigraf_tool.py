@@ -1,7 +1,8 @@
-import pytest
-import sys
 import os
+import sys
 import tempfile
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from minigraf_tool import query, transact, reset
@@ -27,12 +28,12 @@ def test_recall_accuracy(temp_graph):
         reason="Initial architecture decision",
         graph_path=temp_graph
     )
-    
+
     result = query(
         "[:find ?priority :where [?e :project/priority ?priority]]",
         graph_path=temp_graph
     )
-    
+
     assert result["ok"], f"Query failed: {result.get('error')}"
     assert len(result["results"]) > 0, "No results returned"
     assert any("low-latency" in str(r) for r in result["results"])
@@ -46,12 +47,12 @@ def test_dependency_query(temp_graph):
         reason="Component dependency",
         graph_path=temp_graph
     )
-    
+
     result = query(
         "[:find ?name :where [?e :component/name ?name]]",
         graph_path=temp_graph
     )
-    
+
     assert result["ok"], f"Query failed: {result.get('error')}"
     assert any("AuthService" in str(r) for r in result["results"])
 
@@ -63,12 +64,12 @@ def test_temporal_query(temp_graph):
         reason="Initial setup",
         graph_path=temp_graph
     )
-    
+
     result = query(
         "[:find ?name :as-of 1 :where [?e :person/name ?name]]",
         graph_path=temp_graph
     )
-    
+
     assert result["ok"], f"Temporal query failed: {result.get('error')}"
 
 
@@ -79,16 +80,16 @@ def test_reason_required(temp_graph):
         reason=None,
         graph_path=temp_graph
     )
-    
+
     assert not result["ok"], "transact should fail without reason"
     assert "reason is required for all writes" in result.get("error", "")
-    
+
     result_empty = transact(
         "[[:test :person/name \"Bob\"]]",
         reason="",
         graph_path=temp_graph
     )
-    
+
     assert not result_empty["ok"], "transact should fail with empty reason"
     assert "reason is required for all writes" in result_empty.get("error", "")
 
@@ -100,9 +101,9 @@ def test_reset(temp_graph):
         reason="Setup for reset test",
         graph_path=temp_graph
     )
-    
+
     assert os.path.exists(temp_graph), "Graph should exist after transact"
-    
+
     result = reset(graph_path=temp_graph)
     assert result["ok"], "Reset should succeed"
     assert result.get("deleted") is not None, "Reset should return deleted path"
