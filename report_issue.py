@@ -48,7 +48,6 @@ def _is_minigraf_related(description: str, error: str = "", datalog: str = "") -
         "import error",
         "subprocess",
         "cli wrapper",
-        "http server",
     ]
 
     minigraf_score = sum(1 for ind in minigraf_indicators if ind in combined)

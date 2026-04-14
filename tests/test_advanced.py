@@ -3,7 +3,6 @@ Tests for functions not covered by test_minigraf_tool.py:
   - get_graph_path()
   - export()
   - import_data() — valid data, failed transact, malformed/unsafe facts
-  - HTTP mode (_run_http via MINIGRAF_MODE=http)
   - import-time path behavior
   - report_issue — gh available, gh unavailable, invalid issue type
   - retract() — reason required, success, returns tx count
@@ -162,43 +161,6 @@ def test_import_data_unsafe_token(temp_graph):
     assert result["ok"]
     assert result["imported"] == 0
     assert result["failed"] == 1
-
-
-# ---------------------------------------------------------------------------
-# HTTP mode
-# ---------------------------------------------------------------------------
-
-def test_run_http_success():
-    """Test _run_http handles successful response."""
-    mock_response = MagicMock()
-    mock_response.read.return_value = json.dumps({"results": [["val"]]}).encode()
-    mock_response.__enter__ = lambda s: s
-    mock_response.__exit__ = MagicMock(return_value=False)
-
-    with patch("minigraf_tool.urllib.request.urlopen", return_value=mock_response):
-        result = minigraf_tool._run_http("query", {"datalog": "[:find ?x :where [?e :a ?x]]"})
-
-    assert result["ok"]
-    assert "data" in result
-
-
-def test_http_mode_query_calls_run_http(temp_graph):
-    """Test query uses HTTP mode when configured."""
-    with open(temp_graph, "w", encoding="utf-8") as f:
-        f.write("")
-    with patch.dict(os.environ, {"MINIGRAF_MODE": "http"}):
-        with patch("minigraf_tool._run_http") as mock_http:
-            mock_http.return_value = {"ok": True, "data": {"results": []}}
-            saved = minigraf_tool.MINIGRAF_MODE
-            minigraf_tool.MINIGRAF_MODE = "http"
-            try:
-                result = minigraf_tool.query(
-                    "[:find ?x :where [?e :a ?x]]", graph_path=temp_graph
-                )
-            finally:
-                minigraf_tool.MINIGRAF_MODE = saved
-    mock_http.assert_called_once()
-    assert result["ok"]
 
 
 # ---------------------------------------------------------------------------

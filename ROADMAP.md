@@ -10,8 +10,7 @@
 
 | Priority | Item | Description | Effort | Status |
 |----------|------|-------------|--------|--------|
-| 1 | HTTP server | Axum HTTP wrapper for better agent performance | Medium | Complete ✓ |
-| 2 | Write policy enforcer | Validate reason required before transact | Low | Complete ✓ |
+| 1 | Write policy enforcer | Validate reason required before transact | Low | Complete ✓ |
 | 3 | report_issue tool | Auto-file GitHub issues on failures | Low | Complete ✓ |
 | 4 | install.py | One-command setup script | Low | Complete ✓ |
 

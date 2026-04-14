@@ -123,34 +123,11 @@ Default: `memory.graph` in the current working directory.
 
 Override: `MINIGRAF_GRAPH_PATH=/custom/path python ...`
 
-## HTTP Server Mode
-
-An optional Axum HTTP server (`minigraf_server.rs`) exposes the same query/transact API over HTTP.
-
-```bash
-# Build and run the server (requires Rust)
-rustc minigraf_server.rs -o minigraf_server  # or compile via Cargo
-./minigraf_server
-# Listens on http://127.0.0.1:8080 by default
-
-# Point the Python wrapper at it
-MINIGRAF_MODE=http MINIGRAF_HTTP_URL=http://localhost:8080 python ...
-```
-
-Environment variables for the server:
-
-| Variable | Default | Description |
-|---|---|---|
-| `MINIGRAF_HTTP_ADDR` | `127.0.0.1:8080` | Bind address and port |
-| `MINIGRAF_GRAPH_PATH` | `/tmp/minigraf_memory.graph` | Graph file path |
-| `MINIGRAF_BIN` | `minigraf` | Path to minigraf binary |
-
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `minigraf_tool.py` | Python CLI wrapper |
-| `minigraf_server.rs` | Axum HTTP server |
 | `report_issue.py` | GitHub issue reporter |
 | `install.py` | Setup script |
 | `pyproject.toml` | Python packaging |
