@@ -14,11 +14,15 @@ __pycache__/
 .codex/
 memory.graph
 
+# Claude Code plugin/session state
+.claude-plugin/
+.claude/
+
+# Synced skill copies (canonical versions are in repo root)
+skills/
+
 # OS
 .DS_Store
-
-# Skill duplicates (use .opencode/skills/ version)
-# SKILL.md is in the repo - install.py syncs it to .opencode/
 
 # Update tracking
 .last_update
