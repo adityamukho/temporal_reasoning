@@ -1,24 +1,36 @@
-# Temporal Reasoning
+# Vulcan
 
-Persistent bi-temporal graph memory for AI coding agents. Prevents context drift across long sessions by storing architecture decisions, dependencies, and constraints.
+**Perfect memory. Exact reasoning. Complete history.**
 
-## Problem Scope
+Vulcan gives AI coding agents bi-temporal graph memory: query any past state, traverse live dependency graphs, and correlate architectural decisions with structural change — all with deterministic Datalog, no fuzzy retrieval.
 
-This skill solves a specific problem: **AI coding agents forget context between conversations**.
+## Questions Only Vulcan Can Answer
 
-What it does:
-- **Stores** architecture decisions, constraints, and preferences
-- **Queries** past state with temporal awareness
-- **Persists** memory across sessions
+These queries are impossible with git log, vector search, or key-value memory:
 
-What it is NOT:
-- A general-purpose database
-- A replacement for version control
-- A code search tool
+```datalog
+; What did the dependency graph look like before the auth refactor?
+[:find ?caller ?callee
+ :as-of 30
+ :where [?caller :calls ?callee]]
 
-## Why minigraf?
+; When did this coupling first appear — and what decision caused it?
+[:find ?reason
+ :where [:project/service-a :depends-on :project/service-b]
+        [?d :motivated-by ?c]
+        [?c :description ?reason]]
 
-Most memory tools for agents are key-value stores or vector databases. They answer "what do you know now?" minigraf answers a harder question: **"what did you know then?"**
+; Which modules were coupled to the payment service when we made the DB decision?
+[:find ?module
+ :as-of 15
+ :where [?module :depends-on :service/payment]]
+```
+
+Vulcan is the only tool where both the decision and the structural change live as datoms in the same graph and can be joined in a single query. See [Phase 4](ROADMAP.md) for code structure evolution from git history.
+
+## Why Vulcan?
+
+Most memory tools for agents are key-value stores or vector databases. They answer "what do you know now?" Vulcan answers a harder question: **"what did you know then, and what changed?"**
 
 **Time travel.** Every write is stamped with a transaction number. You can query the graph as it existed at any past transaction:
 
@@ -58,7 +70,7 @@ query("[:find ?name :where [:project/db :name ?name]]")
                       ▼
 ┌─────────────────────────────────────────────────────────┐
 │              Python Skill Layer                          │
-│         (minigraf_tool.py - this repo)                  │
+│         (vulcan.py - this repo)                         │
 │   - query(), transact() functions                     │
 │   - CLI mode                                           │
 │   - Backup/restore utilities                           │
@@ -68,6 +80,7 @@ query("[:find ?name :where [:project/db :name ?name]]")
 ┌─────────────────────────────────────────────────────────┐
 │              Minigraf CLI (>= 0.18.0)                   │
 │         (https://github.com/adityamukho/minigraf)       │
+│         (Vulcan's storage engine)                       │
 │   - Bi-temporal Datalog database                      │
 │   - Transaction time + Valid time                      │
 └─────────────────────┬───────────────────────────────────┘
@@ -92,12 +105,12 @@ python install.py
 ### Install In Agent Environments
 
 Claude Code / Codex:
-- Install the local skill from this repository as `temporal-reasoning`.
+- Install the local skill from this repository as `vulcan`.
 - Use [SKILL.md](/SKILL.md) and [skill.json](/skill.json) as the primary skill files.
 
 OpenCode:
 - Run `python install.py` from the repository root.
-- This syncs the skill into `.opencode/skills/temporal-reasoning`.
+- This syncs the skill into `.opencode/skills/vulcan`.
 
 If manual installation is required, include:
 - [SKILL.md](/SKILL.md)
@@ -109,7 +122,7 @@ If manual installation is required, include:
 ## Quick Start
 
 ```python
-from minigraf_tool import query, transact
+from vulcan import query, transact
 
 # Store a decision
 transact("[[:decision/cache-strategy :decision/description \"use Redis\"]]", 
@@ -129,7 +142,7 @@ Override: `MINIGRAF_GRAPH_PATH=/custom/path python ...`
 
 | File | Purpose |
 |------|---------|
-| `minigraf_tool.py` | Python CLI wrapper |
+| `vulcan.py` | Python CLI wrapper |
 | `report_issue.py` | GitHub issue reporter |
 | `install.py` | Setup script |
 | `pyproject.toml` | Python packaging |
@@ -139,10 +152,10 @@ Override: `MINIGRAF_GRAPH_PATH=/custom/path python ...`
 
 ## Tools
 
-- **minigraf_query** — Query memory with Datalog
-- **minigraf_transact** — Store facts (reason required)
-- **minigraf_retract** — Retract facts (original stays in history)
-- **minigraf_report_issue** — File GitHub issues
+- **vulcan_query** — Query memory with Datalog
+- **vulcan_transact** — Store facts (reason required)
+- **vulcan_retract** — Retract facts (original stays in history)
+- **vulcan_report_issue** — File GitHub issues
 
 ## Query Examples
 
@@ -243,3 +256,4 @@ See [`evals/benchmark.md`](evals/benchmark.md) for full results and per-eval bre
 - **Phase 1** — Python skill layer ✓
 - **Phase 2** — Write policy, report_issue, install, skill benchmarks ✓
 - **Phase 3** — WASM bindings, MCP integration (future)
+- **Phase 4** — Code structure evolution from git history (future)
