@@ -1,7 +1,7 @@
 {
-  "name": "temporal-reasoning",
+  "name": "vulcan",
   "version": "0.1.0",
-  "description": "Persistent bi-temporal graph memory for coding agents. Prevents context drift across long sessions by storing architecture decisions, dependencies, and constraints.",
+  "description": "Vulcan gives AI coding agents bi-temporal graph memory: query any past state, traverse live dependency graphs, and correlate architectural decisions with structural change — all with deterministic Datalog, no fuzzy retrieval.",
   "tools": [
     "tools/query.json",
     "tools/transact.json",
