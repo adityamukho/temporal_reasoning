@@ -2,15 +2,15 @@
 
 **Date**: 2026-04-14  
 **Model**: claude-sonnet-4-6  
-**Iterations**: 2 (iteration-1 baseline evals → iteration-2 hardened evals)
+**Iterations**: 3 (iteration-1 baseline → iteration-2 hardened evals → iteration-3 graph capabilities)
 
 ## Summary
 
 | Metric | With Skill | Without Skill | Delta |
 |--------|-----------|---------------|-------|
-| Pass Rate | **100%** (19/19) | **0%** (0/19) | **+1.00** |
+| Pass Rate | **100%** (34/34) | **0%** (0/34) | **+1.00** |
 
-All four evals pass with the skill. All four fail without it. The delta is maximally discriminating.
+All seven evals pass with the skill. All seven fail without it. The delta is maximally discriminating.
 
 ## Evals
 
@@ -64,8 +64,47 @@ All four evals pass with the skill. All four fail without it. The delta is maxim
 
 > Without the skill, architectural consistency can be silently broken in a single prompt.
 
+### Eval 5 — Entity Reference Storage
+
+**Prompt**: User describes a 4-component service graph (api-gateway → auth-service → jwt-validator → key-store).  
+**What it tests**: Does the skill cause Claude to store relationship edges as traversable entity idents (`:calls :project/auth-service`) rather than dead-end strings (`:calls "auth-service"`)?
+
+| | With Skill | Without Skill |
+|--|-----------|---------------|
+| Pass rate | 5/5 | 0/5 |
+| Tool calls | 4× transact | 0 |
+| Key behavior | Stores 3 entity-reference edges with `:project/` keyword values; tags all 4 nodes with `:entity-type :type/component`; uses flat attribute names | Acknowledges architecture conversationally; nothing stored — relationship graph lost at session end |
+
+### Eval 6 — Transitive Impact Analysis
+
+**Prompt**: "key-store is being replaced — which services are affected and how?"  
+**Setup**: Memory pre-seeded with the 4-component graph from eval 5.  
+**What it tests**: Does the skill cause Claude to execute a graph traversal and return a full impact chain, not just a flat list?
+
+| | With Skill | Without Skill |
+|--|-----------|---------------|
+| Pass rate | 5/5 | 0/5 |
+| Tool calls | 3× query | 0 |
+| Key behavior | Executes explicit 2-hop Datalog join; identifies jwt-validator (direct) and auth-service (transitive); presents ASCII impact chain | Correctly admits it cannot name the affected services without architectural memory — no hallucination, but all criteria fail |
+
+> **The without-skill agent's self-awareness is notable**: it explicitly said it lacked the context to answer. Graph memory and conversational context are not substitutes — the former is structured, queryable, and session-persistent.
+
+### Eval 7 — Decision Traceability
+
+**Prompt**: "Why did we choose asyncio instead of threading?"  
+**Setup**: Memory pre-seeded with `[:decision/asyncio-choice :motivated-by :constraint/gil]` and `[:constraint/gil :description "Python GIL limits true thread parallelism"]`.  
+**What it tests**: Does the skill cause Claude to traverse the `:motivated-by` edge and ground its answer in the stored constraint, not in general asyncio knowledge?
+
+| | With Skill | Without Skill |
+|--|-----------|---------------|
+| Pass rate | 5/5 | 0/5 |
+| Tool calls | 2× query | 0 |
+| Key behavior | Traverses `:motivated-by` edge; retrieves GIL constraint description; presents full chain: asyncio choice → motivated-by → GIL → explanation | Found "GIL" only as a documentation example in static files (SKILL.md); correctly identified it as unverified — file search and graph memory are not equivalent |
+
 ## Observations
 
-- **Eval 3 is the most discriminating**: it tests cross-session retrieval of an *implicit* constraint — the prompt gives no hint that a relevant preference exists. Only memory makes it visible.
+- **Eval 3 is the most discriminating for memory recall**: it tests cross-session retrieval of an *implicit* constraint — the prompt gives no hint that a relevant preference exists. Only memory makes it visible.
 - **Eval 4 demonstrates harm prevention**: the baseline isn't merely unhelpful, it's actively dangerous — silently overriding an architectural decision with no flag.
-- **The baseline never hallucinates**: it either refuses to answer (eval 2) or fulfills the request without checking memory (evals 3, 4). The skill doesn't prevent bad answers — it enables informed ones.
+- **Eval 6 is the most discriminating for graph traversal**: the baseline correctly identified it lacked context rather than hallucinating. The gap is structural — without a stored graph, no traversal is possible regardless of model capability.
+- **The baseline never hallucinates**: it either refuses to answer (evals 2, 6, 7) or fulfills the request without checking memory (evals 3, 4, 5). The skill doesn't prevent bad answers — it enables informed ones.
+- **Recursive rules are not supported by minigraf** (base-case only). Fixed-depth transitive queries use multi-hop joins. Rules are useful for unifying multiple edge types under a single named relation.

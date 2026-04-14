@@ -43,6 +43,8 @@ query("[:find ?name :where [:project/db :name ?name]]")
 
 **Exact Datalog queries, not fuzzy search.** Results are deterministic and reproducible — no embedding model, no similarity threshold, no hallucinated retrievals. A query either matches or it doesn't.
 
+**Graph traversal.** Entities are first-class nodes — not isolated key-value blobs. Store service-calls-service as a real graph edge (`:calls :project/auth-service`) and traverse it with Datalog joins. Fixed-depth transitive queries (2-hop, 3-hop) are expressed as multi-hop joins. Rules unify multiple edge types under a single named relation.
+
 **Local and offline.** A single binary and a file. No API key, no network dependency, no cloud service to go down.
 
 ## Architecture
@@ -58,7 +60,7 @@ query("[:find ?name :where [:project/db :name ?name]]")
 │              Python Skill Layer                          │
 │         (minigraf_tool.py - this repo)                  │
 │   - query(), transact() functions                     │
-│   - CLI and HTTP modes                                 │
+│   - CLI mode                                           │
 │   - Backup/restore utilities                           │
 └─────────────────────┬───────────────────────────────────┘
                       │
@@ -153,6 +155,20 @@ query("[:find ?x :as-of 5 :where [?e :attr ?x]]")
 
 # Aggregation
 query("[:find (count ?e) :where [?e :decision/description ?d]]")
+
+# Single-hop graph traversal — what does api-gateway call?
+query("[:find ?name :where [:project/api-gateway :calls ?svc] [?svc :name ?name]]")
+
+# Two-hop join — transitive impact: what depends on key-store (directly or via one intermediate)?
+query("""[:find ?svc
+          :where [?mid :depends-on :project/key-store]
+                 [?svc :depends-on ?mid]]""")
+
+# Decision traceability — why did we choose asyncio?
+query("[:find ?reason :where [:decision/asyncio-choice :motivated-by ?c] [?c :description ?reason]]")
+
+# Typed entity query — list all stored components
+query("[:find ?name :where [?e :entity-type :type/component] [?e :name ?name]]")
 ```
 
 ## Cross-Session Evaluation
@@ -203,7 +219,7 @@ session.
 
 ## Skill Benchmarks
 
-Four evals measure how the skill changes behavior versus a no-skill baseline. Each eval is seeded with a specific memory state and tests a distinct capability.
+Seven evals measure how the skill changes behavior versus a no-skill baseline. Each eval is seeded with a specific memory state and tests a distinct capability.
 
 | Eval | What it tests | With Skill | Without Skill |
 |------|--------------|-----------|---------------|
@@ -211,9 +227,14 @@ Four evals measure how the skill changes behavior versus a no-skill baseline. Ea
 | Populated retrieval | Queries memory and cites stored facts by name | 5/5 | 0/5 |
 | Cross-session preference | Discovers and applies a constraint never stated in the current conversation | 4/4 | 0/4 |
 | Conflict detection | Surfaces architectural conflicts before silently overriding decisions | 4/4 | 0/4 |
-| **Total** | | **19/19 (100%)** | **0/19 (0%)** |
+| Entity reference storage | Stores relationships as traversable graph edges, not dead-end strings | 5/5 | 0/5 |
+| Transitive impact analysis | Traverses a multi-hop dependency chain to find all affected services | 5/5 | 0/5 |
+| Decision traceability | Follows a `:motivated-by` edge to surface the constraint behind a decision | 5/5 | 0/5 |
+| **Total** | | **34/34 (100%)** | **0/34 (0%)** |
 
-The cross-session preference eval is the most discriminating: the prompt says "make sure it fits with how we do things" with no hint that a relevant constraint exists. The skill queries memory, finds a stored no-mocks preference from a prior session, and writes a test using real database connections — without being told to.
+The cross-session preference eval is the most discriminating for memory recall: the prompt says "make sure it fits with how we do things" with no hint that a relevant constraint exists. The skill queries memory, finds a stored no-mocks preference, and writes a test using real database connections.
+
+The transitive impact eval is the most discriminating for graph traversal: given "key-store is being replaced — what breaks?" the skill executes a 2-hop Datalog join and returns a full impact chain; without it, the agent correctly admits it cannot name the affected services.
 
 See [`evals/benchmark.md`](evals/benchmark.md) for full results and per-eval breakdowns.
 
