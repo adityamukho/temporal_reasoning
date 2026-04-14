@@ -152,6 +152,8 @@ retract("[[:project/old-service :name \"obsolete\"]]",
 - `(not [?e :attr val])` — exclude matches
 - `(not-join [?e] [?e :attr ?x])` — existential negation
 
+For advanced syntax: https://github.com/adityamukho/minigraf/wiki/Datalog-Reference
+
 ## Graph Storage
 
 Default: `memory.graph` in the current working directory. Run all commands from the same project root to ensure consistent graph access.
