@@ -16,6 +16,35 @@ What it is NOT:
 - A replacement for version control
 - A code search tool
 
+## Why minigraf?
+
+Most memory tools for agents are key-value stores or vector databases. They answer "what do you know now?" minigraf answers a harder question: **"what did you know then?"**
+
+**Time travel.** Every write is stamped with a transaction number. You can query the graph as it existed at any past transaction:
+
+```python
+# Decision made in session 1, transaction 3
+transact('[[:project/db :name "PostgreSQL"]]', reason="Initial choice")
+
+# Changed in session 4, transaction 11
+retract('[[:project/db :name "PostgreSQL"]]', reason="Switching to CockroachDB for geo-distribution")
+transact('[[:project/db :name "CockroachDB"]]', reason="Switching to CockroachDB for geo-distribution")
+
+# Later: what did we think the database was before session 4?
+query("[:find ?name :as-of 10 :where [:project/db :name ?name]]")
+# → "PostgreSQL"
+
+# What do we think now?
+query("[:find ?name :where [:project/db :name ?name]]")
+# → "CockroachDB"
+```
+
+**Retraction with preserved history.** Changing your mind doesn't erase the record. Retracted facts stay in the bi-temporal log and remain queryable at their original transaction time. This means the agent can always reconstruct *why* a decision changed, not just *what* the current state is.
+
+**Exact Datalog queries, not fuzzy search.** Results are deterministic and reproducible — no embedding model, no similarity threshold, no hallucinated retrievals. A query either matches or it doesn't.
+
+**Local and offline.** A single binary and a file. No API key, no network dependency, no cloud service to go down.
+
 ## Architecture
 
 ```

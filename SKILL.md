@@ -218,6 +218,31 @@ transact("""[[:preference/no-db-mocks :description "always use real database con
          reason="Strong team preference — backed by production incident")
 ```
 
+### Changing a decision — retraction with preserved history
+User: "We're dropping PostgreSQL, switching to CockroachDB for geo-distribution."
+
+```python
+# 1. Check what's currently stored
+result = query("[:find ?a ?v :where [:project/db ?a ?v]]")
+# → :name "PostgreSQL", :role "primary database", :reason "ACID + JSON"
+
+# 2. Retract the old facts (they stay in history — still queryable with :as-of)
+retract("""[[:project/db :name "PostgreSQL"]
+            [:project/db :reason "ACID + JSON support"]]""",
+        reason="Switching to CockroachDB for geo-distribution")
+
+# 3. Store the new decision
+transact("""[[:project/db :name "CockroachDB"]
+             [:project/db :reason "geo-distribution requirement"]]""",
+         reason="Switching to CockroachDB for geo-distribution")
+
+# 4. Old decision is still in history — what did we know at transaction 3?
+query("[:find ?name :as-of 3 :where [:project/db :name ?name]]")
+# → "PostgreSQL"
+```
+
+This is the key difference from a simple key-value store: changing your mind doesn't erase the record. The agent can always reconstruct what was decided and when.
+
 ## Error Responses
 
 All functions return `{"ok": bool, ...}`. Common errors:
