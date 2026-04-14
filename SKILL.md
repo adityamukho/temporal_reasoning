@@ -1,5 +1,5 @@
 ---
-name: temporal-reasoning
+name: vulcan
 description: >
   Use this skill whenever the user mentions decisions ("we'll use X", "going with Y", "decided to Z"),
   preferences ("I prefer", "I don't like", "always use", "never use"), constraints ("must be", "can't use",
@@ -9,9 +9,11 @@ description: >
   query first. When in doubt, query.
 ---
 
-# Temporal Reasoning Skill
+# Vulcan
 
-Persistent bi-temporal graph memory for AI coding agents. Stores architecture decisions, preferences, constraints, and dependencies so they survive across sessions — preventing the context drift that causes repeated questions, contradictory advice, and violations of established patterns.
+Perfect memory. Exact reasoning. Complete history.
+
+Vulcan gives AI coding agents bi-temporal graph memory: query any past state, traverse live dependency graphs, and correlate architectural decisions with structural change — all with deterministic Datalog, no fuzzy retrieval.
 
 ## The Core Idea
 
@@ -21,7 +23,7 @@ Without memory, every conversation starts from zero. You end up asking the user 
 - **Write immediately** when the user establishes something worth keeping (decision, preference, constraint)
 - **Read before acting** when the user asks about the past, or when you're about to modify something where past decisions might apply
 
-## When to Write (minigraf_transact)
+## When to Write (vulcan_transact)
 
 Write to memory when the user's words signal a durable fact:
 
@@ -37,7 +39,7 @@ Store the *why* when you have it — a reason like "chosen for async support" is
 
 After every write, say: "I've stored that in memory." and summarize what was stored.
 
-## When to Read (minigraf_query)
+## When to Read (vulcan_query)
 
 Query memory before you answer or act, when:
 - The user asks about past decisions, architecture, preferences, or constraints
@@ -52,7 +54,7 @@ Say "Let me check memory..." before querying. Then:
 
 **Query first, answer second.** The reason: a confident answer that contradicts a stored decision is far more damaging than taking a moment to check.
 
-## When to Retract (minigraf_retract)
+## When to Retract (vulcan_retract)
 
 Retract when:
 - The user explicitly says "remove", "delete", "retract", "forget", "that's no longer true"
@@ -142,9 +144,9 @@ For traversal, use recursive rules (see Quick Reference).
 
 ## Tools
 
-### minigraf_transact
+### vulcan_transact
 ```python
-from minigraf_tool import transact
+from vulcan import transact
 
 transact("""[[:project/postgres :name "PostgreSQL 15"]
              [:project/postgres :role "primary database"]
@@ -155,12 +157,12 @@ transact("""[[:project/postgres :name "PostgreSQL 15"]
 
 Or via CLI (from project directory):
 ```bash
-python minigraf_tool.py transact '[...]' --reason "why this is worth keeping"
+python vulcan.py transact '[...]' --reason "why this is worth keeping"
 ```
 
-### minigraf_query
+### vulcan_query
 ```python
-from minigraf_tool import query
+from vulcan import query
 
 # All facts for a known entity
 query("[:find ?a ?v :where [:project/postgres ?a ?v]]")
@@ -176,9 +178,9 @@ query('[:find ?e ?v :where [?e :reason ?v] (starts-with? ?v "chosen")]')
 query("[:find ?a ?v :as-of 5 :where [:project/postgres ?a ?v]]")
 ```
 
-### minigraf_retract
+### vulcan_retract
 ```python
-from minigraf_tool import retract
+from vulcan import retract
 retract("[[:project/old-service :name \"obsolete\"]]",
         reason="Service decommissioned")
 ```
@@ -392,7 +394,7 @@ All functions return `{"ok": bool, ...}`. Common errors:
 - `as_of requires :as-of clause` — include `:as-of N` in query
 - `reason is required for all writes` — provide non-empty reason
 
-If an error persists after checking syntax and installation, use `minigraf_report_issue` to file a structured bug report with the failing query and error message:
+If an error persists after checking syntax and installation, use `vulcan_report_issue` to file a structured bug report with the failing query and error message:
 
 ```python
 from report_issue import report_issue
@@ -405,11 +407,11 @@ report_issue("parse_error", "query returns unexpected output",
 
 | File | Purpose |
 |------|---------|
-| `minigraf_tool.py` | Python wrapper (import or CLI) |
-| `report_issue.py` | GitHub issue reporter for minigraf errors |
-| `tools/query.json` | Tool schema for minigraf_query |
-| `tools/transact.json` | Tool schema for minigraf_transact |
-| `tools/retract.json` | Tool schema for minigraf_retract |
-| `tools/report_issue.json` | Tool schema for minigraf_report_issue |
+| `vulcan.py` | Python wrapper (import or CLI) |
+| `report_issue.py` | GitHub issue reporter for errors |
+| `tools/query.json` | Tool schema for vulcan_query |
+| `tools/transact.json` | Tool schema for vulcan_transact |
+| `tools/retract.json` | Tool schema for vulcan_retract |
+| `tools/report_issue.json` | Tool schema for vulcan_report_issue |
 | `install.py` | Setup script |
 | `ROADMAP.md` | Project roadmap |
