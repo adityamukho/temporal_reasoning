@@ -1,4 +1,4 @@
-# Temporal Reasoning Repository
+# Vulcan Repository
 
 Persistent bi-temporal graph memory skill for AI coding agents. Prevents context drift across long sessions by storing architecture decisions, dependencies, and constraints.
 
@@ -23,16 +23,16 @@ Persistent bi-temporal graph memory skill for AI coding agents. Prevents context
 
 | File | Purpose |
 |------|---------|
-| `minigraf_tool.py` | Python CLI wrapper (import or run as CLI) |
-| `tools/query.json` | Tool schema for `minigraf_query` |
-| `tools/transact.json` | Tool schema for `minigraf_transact` |
+| `vulcan.py` | Python CLI wrapper (import or run as CLI) |
+| `tools/query.json` | Tool schema for `vulcan_query` |
+| `tools/transact.json` | Tool schema for `vulcan_transact` |
 | `skill.json` | Portable skill manifest |
 
 ## Usage
 
 ### As Python module:
 ```python
-from minigraf_tool import query, transact
+from vulcan import query, transact
 
 transact("[[:decision/cache-strategy :decision/description \"use Redis\"]]",
          reason="Architecture decision for low-latency caching")
@@ -41,8 +41,8 @@ result = query("[:find ?desc :where [?e :decision/description ?desc]]")
 
 ### As CLI:
 ```bash
-python minigraf_tool.py transact "[[:test :person/name \"Alice\"]]"
-python minigraf_tool.py query "[:find ?name :where [:test :person/name ?name]]"
+python vulcan.py transact "[[:test :person/name \"Alice\"]]"
+python vulcan.py query "[:find ?name :where [:test :person/name ?name]]"
 ```
 
 ### With minigraf directly (REPL):

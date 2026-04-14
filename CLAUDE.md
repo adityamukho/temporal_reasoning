@@ -1,6 +1,6 @@
-# Temporal Reasoning - AI Coding Agent Memory
+# Vulcan — AI Coding Agent Memory
 
-This project provides persistent bi-temporal graph memory for AI coding agents.
+Vulcan provides persistent bi-temporal graph memory for AI coding agents.
 
 ## Quick Start
 
@@ -9,7 +9,7 @@ This project provides persistent bi-temporal graph memory for AI coding agents.
 python install.py
 
 # Use in code
-from minigraf_tool import query, transact
+from vulcan import query, transact
 
 transact("[[:decision/cache :decision/description \"use Redis\"]]", reason="Caching strategy")
 result = query("[:find ?d :where [?e :decision/description ?d]]")
@@ -17,9 +17,8 @@ result = query("[:find ?d :where [?e :decision/description ?d]]")
 
 ## Key Files
 
-- `minigraf_tool.py` - Python wrapper for minigraf CLI
+- `vulcan.py` - Python wrapper for minigraf CLI
 - `SKILL.md` - Skill definition with all query syntax
-- `prompts/system.txt` - Behavioral prompts
 - `install.py` - Setup script (runs weekly updates)
 
 ## Graph Storage
