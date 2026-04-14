@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Minigraf CLI wrapper for AI coding agents.
+Vulcan — bi-temporal graph memory for AI coding agents.
 
-Provides query and transact functions for persistent bi-temporal graph memory.
+Provides query, transact, and retract functions for persistent graph memory
+powered by the minigraf CLI.
 """
 
 import re
@@ -15,7 +16,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 
-logger = logging.getLogger("minigraf_tool")
+logger = logging.getLogger("vulcan")
 logger.addHandler(logging.NullHandler())
 
 MINIGRAF_BIN = "minigraf"
@@ -376,7 +377,7 @@ def main() -> None:
     mode = os.environ.get("MINIGRAF_MODE", "cli")
 
     if len(sys.argv) < 2:
-        print("Usage: minigraf_tool.py <command> [args]")
+        print("Usage: vulcan.py <command> [args]")
         print("Commands: query, transact, retract, reset, path")
         print(f"Mode: {mode} (set MINIGRAF_MODE=http for HTTP server)")
         sys.exit(1)
@@ -385,7 +386,7 @@ def main() -> None:
 
     if cmd == "query":
         if len(sys.argv) < 3:
-            print("Usage: minigraf_tool.py query '<datalog>' [--as-of <tx>]")
+            print("Usage: vulcan.py query '<datalog>' [--as-of <tx>]")
             sys.exit(1)
         datalog = sys.argv[2]
         as_of = None
@@ -397,7 +398,7 @@ def main() -> None:
         print(json.dumps(result, indent=2))
     elif cmd == "transact":
         if len(sys.argv) < 3:
-            print("Usage: minigraf_tool.py transact '<facts>' [--reason '<reason>']")
+            print("Usage: vulcan.py transact '<facts>' [--reason '<reason>']")
             sys.exit(1)
         facts = sys.argv[2]
         reason = None
@@ -409,7 +410,7 @@ def main() -> None:
         print(json.dumps(result, indent=2))
     elif cmd == "retract":
         if len(sys.argv) < 3:
-            print("Usage: minigraf_tool.py retract '<facts>' [--reason '<reason>']")
+            print("Usage: vulcan.py retract '<facts>' [--reason '<reason>']")
             sys.exit(1)
         facts = sys.argv[2]
         reason = None
