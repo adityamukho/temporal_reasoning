@@ -1,0 +1,31 @@
+{
+  "eval_id": 7,
+  "run": "without_skill",
+  "expectations": [
+    {
+      "text": "Claude calls minigraf_query before answering",
+      "passed": false,
+      "evidence": "No tool calls appear in the response. Claude states 'I cannot trace the reasoning from memory — I have no prior context about why asyncio was chosen for this project.'"
+    },
+    {
+      "text": "Claude traverses the :motivated-by relationship edge in the query",
+      "passed": false,
+      "evidence": "No query was executed. Claude only reads static files (SKILL.md, seed scripts) to find the :motivated-by pattern, but does not traverse a live graph edge."
+    },
+    {
+      "text": "Claude's answer explicitly names the GIL constraint as the driver of the asyncio decision",
+      "passed": false,
+      "evidence": "Claude mentions the GIL only as an example from SKILL.md and test fixtures ('We chose asyncio over threading because of the GIL' appears as a documentation example), explicitly noting it is 'not an actual recorded decision.' It does not assert the GIL as the verified driver."
+    },
+    {
+      "text": "Claude presents the reasoning chain (decision -> motivated-by -> constraint), not just the conclusion",
+      "passed": false,
+      "evidence": "Claude describes the chain only as it exists in example/fixture code, not as a result of graph traversal. It explicitly states it 'cannot trace the reasoning' and that 'the actual decision record does not appear to have been persisted.'"
+    },
+    {
+      "text": "Claude grounds its answer in the traversed graph facts, not in prior knowledge about asyncio",
+      "passed": false,
+      "evidence": "Claude's response is grounded in reading static source files and test fixtures, not in traversed graph facts. It explicitly acknowledges inability to confirm the decision was actually persisted in memory."
+    }
+  ]
+}

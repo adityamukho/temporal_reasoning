@@ -1,0 +1,31 @@
+{
+  "eval_id": 5,
+  "run": "with_skill",
+  "expectations": [
+    {
+      "text": "Claude calls minigraf_transact at least once",
+      "passed": true,
+      "evidence": "Four transact() calls are shown (Calls 1–4), each with a successful output e.g. {'ok': True, 'tx': '1776165566432', 'mode': 'cli'}"
+    },
+    {
+      "text": "Relationship values are entity idents (keywords starting with :project/) not quoted strings",
+      "passed": true,
+      "evidence": "All relationship values use entity idents: ':calls :project/auth-service', ':calls :project/jwt-validator', ':depends-on :project/key-store' — none are quoted strings"
+    },
+    {
+      "text": "At least 3 entity-reference edges are stored (calls or depends-on with keyword values)",
+      "passed": true,
+      "evidence": "Three entity-reference edges: [:project/api-gateway :calls :project/auth-service], [:project/auth-service :calls :project/jwt-validator], [:project/jwt-validator :depends-on :project/key-store]"
+    },
+    {
+      "text": "Each component entity is tagged with :entity-type :type/component",
+      "passed": true,
+      "evidence": "All four entities (api-gateway, auth-service, jwt-validator, key-store) include '[:project/... :entity-type :type/component]' in their transact calls"
+    },
+    {
+      "text": "Claude uses flat attribute names (:calls, :depends-on, :name) not namespaced attributes",
+      "passed": true,
+      "evidence": "Attributes used are :name, :entity-type, :calls, :depends-on — all flat, not namespaced (e.g. not :component/calls or :svc/name)"
+    }
+  ]
+}

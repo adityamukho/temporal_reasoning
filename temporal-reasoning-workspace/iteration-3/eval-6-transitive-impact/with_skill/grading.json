@@ -1,0 +1,31 @@
+{
+  "eval_id": 6,
+  "run": "with_skill",
+  "expectations": [
+    {
+      "text": "Claude calls minigraf_query before answering",
+      "passed": true,
+      "evidence": "Three query() calls are shown before the answer: Query 1 (direct dependents of key-store), Query 2 (2-hop services), Query 3 (callers of direct deps). The response also opens with 'Let me check memory for the service dependency graph before answering.'"
+    },
+    {
+      "text": "Claude uses graph traversal (multi-hop join or rule) rather than a flat key-value scan",
+      "passed": true,
+      "evidence": "Query 2 performs a 2-hop join: '[?mid :depends-on :project/key-store] [?svc :depends-on ?mid]' — explicitly chaining through an intermediate entity to find transitive dependents"
+    },
+    {
+      "text": "Claude's answer includes jwt-validator as a directly affected service",
+      "passed": true,
+      "evidence": "'Directly affected: JWT Validator — depends on Key Store (fetches signing keys). A format change to signing keys will break the validator immediately.'"
+    },
+    {
+      "text": "Claude's answer includes auth-service as a transitively affected service",
+      "passed": true,
+      "evidence": "'Transitively affected: Auth Service — depends on JWT Validator. If the validator breaks, auth service loses token validation capability.'"
+    },
+    {
+      "text": "Claude explains the impact chain, not just a flat list",
+      "passed": true,
+      "evidence": "An explicit chain diagram is provided: 'Key Store (changed) └─ JWT Validator :depends-on Key Store ← direct impact └─ Auth Service :depends-on JWT Validator ← transitive impact'"
+    }
+  ]
+}

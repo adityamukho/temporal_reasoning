@@ -71,7 +71,7 @@ Facts are stored as triples: `[entity attribute value]`. The entity ident is the
 
 **Entity idents** should be meaningful and namespaced: `:project/postgres`, `:preference/no-db-mocks`, `:rules/python-version`
 
-**Attribute names** should be flat and self-explanatory: `:name`, `:role`, `:reason`, `:rejected`, `:description`, `:tradeoff`, `:ttl`
+**Attribute names** should be flat and self-explanatory: `:name`, `:role`, `:reason`, `:rejected`, `:description`, `:tradeoff`, `:entity-type`, `:calls`, `:depends-on`, `:motivated-by`, `:governs`
 
 ```
 [:project/postgres :name "PostgreSQL 15"]
@@ -87,6 +87,58 @@ query("[:find ?a ?v :where [:project/postgres ?a ?v]]")
 ```
 
 Before adding new facts about an entity, query it first to find existing attributes and avoid duplication.
+
+## Entity Types and Graph Relationships
+
+### Typing entities with `:entity-type`
+
+Assign a type to every entity so you can query across categories without knowing individual entity names:
+
+```python
+transact("""[[:project/auth-service :name "AuthService"]
+             [:project/auth-service :entity-type :type/component]
+             [:rules/python-version :description "must support Python 3.8 minimum"]
+             [:rules/python-version :entity-type :type/constraint]]""",
+         reason="Component and constraint with types")
+```
+
+Use these canonical type keywords:
+- `:type/component` — service, module, library, or system component
+- `:type/decision` — architecture or design decision
+- `:type/constraint` — rule, requirement, or invariant
+- `:type/preference` — user preference or style choice
+
+Query all constraints: `[:find ?e ?desc :where [?e :entity-type :type/constraint] [?e :description ?desc]]`
+
+**Do not create root entities for namespaces** (no `:project`, `:preference`, `:rules` entities). The namespace in the entity ident already encodes category implicitly. `:entity-type` covers the cases where you need typed cross-category queries.
+
+### Entity references (not strings) for relationships
+
+When a value refers to another entity in memory, store it as an entity keyword — **never as a string**. This is what makes the graph traversable.
+
+```datalog
+; WRONG — string dead-end, cannot traverse
+[:project/auth-service :calls "jwt-module"]
+
+; CORRECT — entity reference, edge is traversable
+[:project/auth-service :calls :project/jwt-module]
+```
+
+Rule of thumb: if the value names something that IS or WILL BE an entity in memory, use its entity ident keyword.
+
+### Relationship vocabulary
+
+Use these standard attributes for edges between entities:
+
+| Attribute | Meaning | Value type |
+|---|---|---|
+| `:calls` | component invokes another component | entity ref |
+| `:depends-on` | component requires another to function | entity ref |
+| `:motivated-by` | decision was driven by a constraint | entity ref |
+| `:supersedes` | this decision replaces an older one | entity ref |
+| `:governs` | constraint applies to a component | entity ref |
+
+For traversal, use recursive rules (see Quick Reference).
 
 ## Tools
 
@@ -152,6 +204,28 @@ retract("[[:project/old-service :name \"obsolete\"]]",
 - `(not [?e :attr val])` — exclude matches
 - `(not-join [?e] [?e :attr ?x])` — existential negation
 
+### Rules (edge-type aliasing)
+Rules apply base-case matches and are useful for unifying multiple edge types
+under one name. **Recursive rule clauses are not evaluated** — use explicit
+multi-hop joins for fixed-depth traversal instead.
+
+```
+; Unify :depends-on and :calls into one relation
+(rule [(linked ?a ?d) [?a :depends-on ?d]])
+(rule [(linked ?a ?d) [?a :calls ?d]])
+[:find ?name :where (linked :project/api-gateway ?svc) [?svc :name ?name]]
+```
+
+### Multi-hop joins (fixed-depth traversal)
+For transitive impact across N hops, write explicit join patterns:
+```
+; 2-hop: api-gateway → auth-service → jwt-validator
+[:find ?name
+ :where [:project/api-gateway :calls ?mid]
+        [?mid :depends-on ?leaf]
+        [?leaf :name ?name]]
+```
+
 For advanced syntax: https://github.com/adityamukho/minigraf/wiki/Datalog-Reference
 
 ## Graph Storage
@@ -169,9 +243,76 @@ Default: `memory.graph` in the current working directory. Run all commands from 
 User: "We're using FastAPI over Flask — async support is critical for our Redis calls."
 ```python
 transact("""[[:project/api-layer :name "FastAPI"]
+             [:project/api-layer :entity-type :type/decision]
              [:project/api-layer :rejected "Flask"]
              [:project/api-layer :reason "async support required for Redis calls"]]""",
          reason="API framework finalized")
+```
+
+### Storing a component relationship (entity reference, not string)
+User: "The auth service calls the JWT module for token validation."
+```python
+transact("""[[:project/auth-service :name "AuthService"]
+             [:project/auth-service :entity-type :type/component]
+             [:project/auth-service :calls :project/jwt-module]
+             [:project/jwt-module :name "JWTModule"]
+             [:project/jwt-module :entity-type :type/component]]""",
+         reason="Component dependency for impact analysis")
+```
+`:calls` holds the entity ident `:project/jwt-module` — not the string `"jwt-module"`. This makes the edge traversable.
+
+### Decision motivated by a constraint
+User: "We chose asyncio over threading because of the GIL."
+```python
+transact("""[[:rules/gil-constraint :description "Python GIL limits true thread parallelism"]
+             [:rules/gil-constraint :entity-type :type/constraint]
+             [:project/asyncio-choice :description "use asyncio over threading"]
+             [:project/asyncio-choice :entity-type :type/decision]
+             [:project/asyncio-choice :motivated-by :rules/gil-constraint]]""",
+         reason="Decision traceability — why asyncio was chosen")
+```
+Query: "Why asyncio?" traverses the edge:
+```python
+query("""[:find ?reason
+          :where [?d :description "use asyncio over threading"]
+                 [?d :motivated-by ?c]
+                 [?c :description ?reason]]""")
+```
+
+### Impact analysis via multi-hop join
+User: "What breaks if I change the key-store service?"
+
+Use explicit join patterns for fixed-depth traversal (minigraf rules are
+base-case only and do not recurse):
+```python
+# Direct dependents (1 hop)
+query("[:find ?name :where [?svc :depends-on :project/key-store] [?svc :name ?name]]")
+
+# 2-hop: also find services that depend on those services
+query("""[:find ?name
+          :where [?mid :depends-on :project/key-store]
+                 [?svc :depends-on ?mid]
+                 [?svc :name ?name]]""")
+```
+
+Use rules to unify multiple edge types when scanning across mixed relationships:
+```python
+query("""(rule [(linked ?a ?d) [?a :depends-on ?d]])
+         (rule [(linked ?a ?d) [?a :calls ?d]])
+         [:find ?name
+          :where (linked :project/auth-service ?svc)
+                 [?svc :name ?name]]""")
+```
+
+### Find all entities of a given type
+```python
+# All components
+query("[:find ?name :where [?e :entity-type :type/component] [?e :name ?name]]")
+
+# All constraints that govern the auth service
+query("""[:find ?desc
+          :where [?c :governs :project/auth-service]
+                 [?c :description ?desc]]""")
 ```
 
 ### Retrieving facts for a known entity

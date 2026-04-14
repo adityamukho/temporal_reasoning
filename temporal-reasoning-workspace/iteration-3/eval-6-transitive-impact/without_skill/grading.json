@@ -1,0 +1,31 @@
+{
+  "eval_id": 6,
+  "run": "without_skill",
+  "expectations": [
+    {
+      "text": "Claude calls minigraf_query before answering",
+      "passed": false,
+      "evidence": "No tool calls appear in the response. Claude explicitly states 'I have no prior context about this codebase's architecture stored in memory' and 'I cannot perform a graph traversal.'"
+    },
+    {
+      "text": "Claude uses graph traversal (multi-hop join or rule) rather than a flat key-value scan",
+      "passed": false,
+      "evidence": "No graph traversal was performed. Claude states it cannot do a traversal without a dependency graph and offers only generic guidance."
+    },
+    {
+      "text": "Claude's answer includes jwt-validator as a directly affected service",
+      "passed": false,
+      "evidence": "Claude explicitly states: 'I cannot identify jwt-validator as a directly affected service.' It does not name jwt-validator as directly affected."
+    },
+    {
+      "text": "Claude's answer includes auth-service as a transitively affected service",
+      "passed": false,
+      "evidence": "Claude explicitly states: 'I cannot identify auth-service as a transitively affected service.' It does not name auth-service as transitively affected."
+    },
+    {
+      "text": "Claude explains the impact chain, not just a flat list",
+      "passed": false,
+      "evidence": "Claude states: 'I cannot explain the specific impact chain because I have no recorded architectural knowledge about this system.' No chain is provided."
+    }
+  ]
+}

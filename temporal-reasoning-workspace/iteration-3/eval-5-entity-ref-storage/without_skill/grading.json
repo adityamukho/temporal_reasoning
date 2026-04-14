@@ -1,0 +1,31 @@
+{
+  "eval_id": 5,
+  "run": "without_skill",
+  "expectations": [
+    {
+      "text": "Claude calls minigraf_transact at least once",
+      "passed": false,
+      "evidence": "No tool calls of any kind appear in the response. Claude only provides a prose architecture summary and table without calling minigraf_transact."
+    },
+    {
+      "text": "Relationship values are entity idents (keywords starting with :project/) not quoted strings",
+      "passed": false,
+      "evidence": "No transact calls were made, so no entity idents were used. The response contains no graph storage of any kind."
+    },
+    {
+      "text": "At least 3 entity-reference edges are stored (calls or depends-on with keyword values)",
+      "passed": false,
+      "evidence": "No edges were stored. The response is a plain prose/table summary with no graph operations."
+    },
+    {
+      "text": "Each component entity is tagged with :entity-type :type/component",
+      "passed": false,
+      "evidence": "No entities were stored in the graph at all, so no :entity-type tagging occurred."
+    },
+    {
+      "text": "Claude uses flat attribute names (:calls, :depends-on, :name) not namespaced attributes",
+      "passed": false,
+      "evidence": "No transact calls were made, so no attribute names were used in graph operations."
+    }
+  ]
+}

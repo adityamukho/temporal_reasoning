@@ -1,0 +1,180 @@
+{
+  "metadata": {
+    "skill_name": "temporal-reasoning",
+    "skill_path": "/home/aditya/workspaces/pycharm/temporal_reasoning/skills/temporal-reasoning",
+    "executor_model": "claude-sonnet-4-6",
+    "analyzer_model": "claude-sonnet-4-6",
+    "timestamp": "2026-04-14T11:30:00Z",
+    "evals_run": [5, 6, 7],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 5,
+      "eval_name": "Entity Reference Storage",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 4,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Claude calls minigraf_transact at least once", "passed": true, "evidence": "Four transact() calls shown with successful outputs"},
+        {"text": "Relationship values are entity idents (keywords starting with :project/) not quoted strings", "passed": true, "evidence": ":calls :project/auth-service, :calls :project/jwt-validator, :depends-on :project/key-store — all entity keywords"},
+        {"text": "At least 3 entity-reference edges are stored (calls or depends-on with keyword values)", "passed": true, "evidence": "3 edges: api-gateway→auth-service, auth-service→jwt-validator, jwt-validator→key-store"},
+        {"text": "Each component entity is tagged with :entity-type :type/component", "passed": true, "evidence": "All 4 entities include [:entity-type :type/component] in their transact calls"},
+        {"text": "Claude uses flat attribute names (:calls, :depends-on, :name) not namespaced attributes", "passed": true, "evidence": "Attributes: :name, :entity-type, :calls, :depends-on — all flat"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 5,
+      "eval_name": "Entity Reference Storage",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.0,
+        "passed": 0,
+        "failed": 5,
+        "total": 5,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Claude calls minigraf_transact at least once", "passed": false, "evidence": "No tool calls made — prose/table summary only"},
+        {"text": "Relationship values are entity idents (keywords starting with :project/) not quoted strings", "passed": false, "evidence": "No storage attempted"},
+        {"text": "At least 3 entity-reference edges are stored (calls or depends-on with keyword values)", "passed": false, "evidence": "No storage attempted"},
+        {"text": "Each component entity is tagged with :entity-type :type/component", "passed": false, "evidence": "No storage attempted"},
+        {"text": "Claude uses flat attribute names (:calls, :depends-on, :name) not namespaced attributes", "passed": false, "evidence": "No storage attempted"}
+      ],
+      "notes": ["Without the skill, Claude acknowledged the architecture conversationally but stored nothing — the relationship graph is lost at end of session"]
+    },
+    {
+      "eval_id": 6,
+      "eval_name": "Transitive Impact Analysis",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 3,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Claude calls minigraf_query before answering", "passed": true, "evidence": "Three query calls made before providing the answer"},
+        {"text": "Claude uses graph traversal (multi-hop join or rule) rather than a flat key-value scan", "passed": true, "evidence": "Used explicit 2-hop join: [?mid :depends-on :project/key-store] [?svc :depends-on ?mid]"},
+        {"text": "Claude's answer includes jwt-validator as a directly affected service", "passed": true, "evidence": "JWT Validator named as direct dependent (1-hop query result)"},
+        {"text": "Claude's answer includes auth-service as a transitively affected service", "passed": true, "evidence": "Auth Service named as transitive dependent (2-hop query result)"},
+        {"text": "Claude explains the impact chain, not just a flat list", "passed": true, "evidence": "ASCII chain diagram showing Key Store → JWT Validator → Auth Service with reasoning"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 6,
+      "eval_name": "Transitive Impact Analysis",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.0,
+        "passed": 0,
+        "failed": 5,
+        "total": 5,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Claude calls minigraf_query before answering", "passed": false, "evidence": "No tool calls — explicitly said it cannot identify services without architectural memory"},
+        {"text": "Claude uses graph traversal (multi-hop join or rule) rather than a flat key-value scan", "passed": false, "evidence": "No traversal possible without stored graph"},
+        {"text": "Claude's answer includes jwt-validator as a directly affected service", "passed": false, "evidence": "Explicitly stated it cannot name jwt-validator"},
+        {"text": "Claude's answer includes auth-service as a transitively affected service", "passed": false, "evidence": "Explicitly stated it cannot name auth-service"},
+        {"text": "Claude explains the impact chain, not just a flat list", "passed": false, "evidence": "No chain — only generic advice to search codebase manually"}
+      ],
+      "notes": ["The without-skill agent gave a remarkably self-aware response — it correctly identified that it lacked the architectural memory needed and said exactly what it could not answer. This is better than hallucinating, but still fails all eval criteria."]
+    },
+    {
+      "eval_id": 7,
+      "eval_name": "Decision Traceability",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 2,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Claude calls minigraf_query before answering", "passed": true, "evidence": "Two query calls made: motivated-by traversal + full entity facts"},
+        {"text": "Claude traverses the :motivated-by relationship edge in the query", "passed": true, "evidence": "Query: [?d :motivated-by ?c] [?c :description ?reason] — explicit edge traversal"},
+        {"text": "Claude's answer explicitly names the GIL constraint as the driver of the asyncio decision", "passed": true, "evidence": "GIL named and explained as the constraint returned by the :motivated-by traversal"},
+        {"text": "Claude presents the reasoning chain (decision -> motivated-by -> constraint), not just the conclusion", "passed": true, "evidence": "Full chain presented: asyncio choice → motivated-by → GIL constraint → explanation of why GIL rules out threading"},
+        {"text": "Claude grounds its answer in the traversed graph facts, not in prior knowledge about asyncio", "passed": true, "evidence": "Answer cites the query result 'Python GIL limits true thread parallelism' as the stored reason, not general asyncio knowledge"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 7,
+      "eval_name": "Decision Traceability",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.0,
+        "passed": 0,
+        "failed": 5,
+        "total": 5,
+        "time_seconds": 0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "Claude calls minigraf_query before answering", "passed": false, "evidence": "No query calls — agent searched the codebase files instead"},
+        {"text": "Claude traverses the :motivated-by relationship edge in the query", "passed": false, "evidence": "No graph traversal"},
+        {"text": "Claude's answer explicitly names the GIL constraint as the driver of the asyncio decision", "passed": false, "evidence": "Found GIL only as a documentation example in SKILL.md/seed_eval7.py, not from a stored decision record"},
+        {"text": "Claude presents the reasoning chain (decision -> motivated-by -> constraint), not just the conclusion", "passed": false, "evidence": "No chain — agent explicitly said it could not trace real reasoning without the persisted record"},
+        {"text": "Claude grounds its answer in the traversed graph facts, not in prior knowledge about asyncio", "passed": false, "evidence": "Agent grounded answer in static source files, not graph facts, and explicitly disclaimed the record as unverified"}
+      ],
+      "notes": ["The without-skill agent found the GIL example by reading SKILL.md — a codebase search rather than memory traversal. It correctly identified this was not a real stored decision. The contrast is clear: graph memory makes the reasoning chain durable and queryable; without it, the agent can only read files and guess."]
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": 0.0, "stddev": 0.0, "min": 0.0, "max": 0.0},
+      "tokens": {"mean": 0, "stddev": 0, "min": 0, "max": 0}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 0.0, "stddev": 0.0, "min": 0.0, "max": 0.0},
+      "time_seconds": {"mean": 0.0, "stddev": 0.0, "min": 0.0, "max": 0.0},
+      "tokens": {"mean": 0, "stddev": 0, "min": 0, "max": 0}
+    },
+    "delta": {
+      "pass_rate": "+1.00",
+      "time_seconds": "+0.0",
+      "tokens": "+0"
+    }
+  },
+  "notes": [
+    "All three evals are maximally discriminating: 15/15 with skill, 0/15 without.",
+    "Eval 6 without-skill is notably self-aware — the agent correctly identified it lacked architectural memory and declined to guess service names. Better than hallucinating, but still fails all criteria.",
+    "Eval 7 without-skill found the GIL via codebase file search (SKILL.md contains it as a documentation example), not via graph traversal. Demonstrates that graph memory and file search are not equivalent — the former is structured, queryable, and session-persistent; the latter is brittle and context-dependent.",
+    "Recursive rule traversal is not supported by minigraf (base-case only). Multi-hop joins are the correct approach for fixed-depth transitive queries. The minigraf_tool.py query() function was updated to correctly handle rule preambles by sending them as separate statements before (query [...])."
+  ]
+}

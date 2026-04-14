@@ -99,8 +99,22 @@ def query(
     """
     path = graph_path or _get_project_root_path()
 
-    # Note: minigraf creates the file if it doesn't exist, so no pre-check needed
-    full_query = f"(query {datalog})"
+    # If the datalog string begins with rule definitions, extract them and send
+    # them as separate top-level statements before (query [...]).  Minigraf's
+    # (query ...) expects a single vector argument, so prepending (rule ...)
+    # inside the (query ...) call produces "Query argument must be a vector".
+    stripped = datalog.strip()
+    if stripped.startswith("(rule"):
+        vec_start = stripped.rfind("[:find")
+        if vec_start >= 0:
+            rules_part = stripped[:vec_start].strip()
+            query_vector = stripped[vec_start:].strip()
+            full_query = f"{rules_part}\n(query {query_vector})"
+        else:
+            full_query = f"(query {datalog})"
+    else:
+        full_query = f"(query {datalog})"
+
     result = _run_minigraf(["--file", path], input_data=full_query)
 
     if not result.get("ok"):
@@ -112,6 +126,18 @@ def query(
         return {"ok": True, "results": []}
 
     lines = output.split("\n")
+
+    # When rule definitions are prepended to the query, minigraf emits a "✓ OK"
+    # acknowledgment line for each rule before the result table.  Skip any
+    # leading non-header lines so the parser always starts at the column header.
+    start = 0
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith("?") or s.startswith(":") or s.startswith("("):
+            start = i
+            break
+    lines = lines[start:]
+
     if len(lines) < 3:
         return {"ok": True, "results": []}
 

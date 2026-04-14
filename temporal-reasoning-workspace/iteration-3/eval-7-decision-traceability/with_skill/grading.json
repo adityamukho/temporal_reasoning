@@ -1,0 +1,31 @@
+{
+  "eval_id": 7,
+  "run": "with_skill",
+  "expectations": [
+    {
+      "text": "Claude calls minigraf_query before answering",
+      "passed": true,
+      "evidence": "Two query() calls are shown: Query 1 traverses ':motivated-by' to retrieve the constraint description, Query 2 retrieves the full decision entity facts. The response opens with 'Let me check memory to trace the reasoning behind the asyncio decision.'"
+    },
+    {
+      "text": "Claude traverses the :motivated-by relationship edge in the query",
+      "passed": true,
+      "evidence": "Query 1 explicitly joins on the :motivated-by edge: '[?d :motivated-by ?c] [?c :description ?reason]', returning 'Python GIL limits true thread parallelism'"
+    },
+    {
+      "text": "Claude's answer explicitly names the GIL constraint as the driver of the asyncio decision",
+      "passed": true,
+      "evidence": "'The GIL (Global Interpreter Lock) prevents multiple Python threads from executing Python bytecode simultaneously... So the decision wasn't preference — it was a direct consequence of the GIL constraint.'"
+    },
+    {
+      "text": "Claude presents the reasoning chain (decision -> motivated-by -> constraint), not just the conclusion",
+      "passed": true,
+      "evidence": "Response states: 'Memory has a full decision record with a :motivated-by edge. Decision: use asyncio over threading for concurrency. Motivated by: Python GIL limits true thread parallelism' — the chain is explicitly presented before the explanation."
+    },
+    {
+      "text": "Claude grounds its answer in the traversed graph facts, not in prior knowledge about asyncio",
+      "passed": true,
+      "evidence": "The answer cites the query output ('[['Python GIL limits true thread parallelism']]') and the stored entity facts (':motivated-by :rules/gil-constraint') as the basis for the explanation, framing the decision as what 'Memory has' recorded."
+    }
+  ]
+}

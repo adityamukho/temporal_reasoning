@@ -12,7 +12,7 @@ __pycache__/
 .opencode/
 .codex
 .codex/
-memory.graph
+*.graph
 
 # Claude Code plugin/session state
 .claude-plugin/
