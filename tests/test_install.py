@@ -120,3 +120,63 @@ class TestInstallBinary:
                 install._install_binary(
                     str(archive_path), "minigraf-x86_64-unknown-linux-gnu.tar.xz"
                 )
+
+
+class TestGetLatestVersion:
+    def test_parses_version_from_redirect_url(self):
+        mock_resp = MagicMock()
+        mock_resp.url = "https://github.com/adityamukho/minigraf/releases/tag/v0.19.0"
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            version = install._get_latest_version()
+
+        assert version == "v0.19.0"
+
+    def test_raises_on_unexpected_redirect(self):
+        mock_resp = MagicMock()
+        mock_resp.url = "https://github.com/adityamukho/minigraf/releases"
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            with pytest.raises(ValueError, match="Could not determine"):
+                install._get_latest_version()
+
+
+class TestDownloadBinary:
+    def test_downloads_asset_and_sha256_sidecar(self, tmp_path):
+        downloaded = []
+
+        def fake_urlretrieve(url, out):
+            downloaded.append(url)
+            with open(out, "wb") as f:
+                f.write(b"fake")
+
+        with patch("urllib.request.urlretrieve", side_effect=fake_urlretrieve):
+            result = install._download_binary(
+                "minigraf-x86_64-unknown-linux-gnu.tar.xz", "v0.19.0", str(tmp_path)
+            )
+
+        assert len(downloaded) == 2
+        assert any("minigraf-x86_64-unknown-linux-gnu.tar.xz.sha256" in u for u in downloaded)
+        assert result == str(tmp_path / "minigraf-x86_64-unknown-linux-gnu.tar.xz")
+        assert os.path.exists(result)
+        assert os.path.exists(result + ".sha256")
+
+
+class TestInstallViaCargo:
+    def test_returns_true_on_success(self):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            assert install._install_via_cargo() is True
+
+    def test_returns_false_on_nonzero_exit(self):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1)
+            assert install._install_via_cargo() is False
+
+    def test_returns_false_when_cargo_not_found(self):
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            assert install._install_via_cargo() is False

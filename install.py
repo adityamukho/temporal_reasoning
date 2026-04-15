@@ -112,6 +112,54 @@ def _install_binary(asset_path: str, asset: str) -> str:
     return binary_path
 
 
+def _get_latest_version() -> str:
+    """Follow GitHub releases/latest redirect to get the current version tag."""
+    import urllib.request
+    url = f"{MINIGRAF_RELEASES_URL}/latest"
+    req = urllib.request.Request(url, headers={"User-Agent": "temporal-reasoning-install"})
+    with urllib.request.urlopen(req) as resp:
+        final_url = resp.url
+    # final_url is like .../releases/tag/v0.19.0
+    tag = final_url.rstrip("/").split("/")[-1]
+    if not tag.startswith("v"):
+        raise ValueError(f"Could not determine latest version from redirect URL: {final_url}")
+    return tag
+
+
+def _download_binary(asset: str, version: str, dest_dir: str) -> str:
+    """Download asset and its .sha256 sidecar to dest_dir. Returns path to asset file."""
+    import urllib.request
+    base_url = f"{MINIGRAF_RELEASES_URL}/download/{version}"
+    asset_path = os.path.join(dest_dir, asset)
+    for filename in (asset, asset + ".sha256"):
+        url = f"{base_url}/{filename}"
+        out = os.path.join(dest_dir, filename)
+        print(f"  Downloading {filename}...")
+        urllib.request.urlretrieve(url, out)
+    return asset_path
+
+
+def _install_via_cargo() -> bool:
+    """Fall back to cargo install minigraf. Returns True on success."""
+    try:
+        result = subprocess.run(
+            ["cargo", "install", "minigraf"],
+            timeout=300,
+        )
+        if result.returncode == 0:
+            print("✓ minigraf installed via cargo")
+            return True
+        print("✗ cargo install minigraf failed")
+        return False
+    except FileNotFoundError:
+        print("✗ cargo not found")
+        print()
+        print("To install minigraf, either:")
+        print("  1. Install Rust (https://rustup.rs), then: cargo install minigraf")
+        print("  2. Download manually from: https://github.com/adityamukho/minigraf/releases")
+        return False
+
+
 def _get_target_dir() -> str:
     """Return install target: --target arg if provided, else cwd."""
     if "--target" in sys.argv:
