@@ -67,3 +67,56 @@ class TestVerifyChecksum:
         sha256_file.write_text("deadbeef" * 8 + "  minigraf.tar.xz\n")
         with pytest.raises(ValueError, match="SHA256 mismatch"):
             install._verify_checksum(str(asset), str(sha256_file))
+
+
+class TestInstallBinary:
+    def test_extracts_tar_xz_and_sets_executable(self, tmp_path):
+        binary_data = b"#!/bin/sh\necho 'minigraf 0.19.0'"
+        archive_path = tmp_path / "minigraf-x86_64-unknown-linux-gnu.tar.xz"
+        with tarfile.open(str(archive_path), "w:xz") as tar:
+            info = tarfile.TarInfo(name="minigraf")
+            info.size = len(binary_data)
+            tar.addfile(info, io.BytesIO(binary_data))
+
+        install_dir = str(tmp_path / "local" / "bin")
+        with patch("sys.platform", "linux"), \
+             patch("os.path.expanduser", side_effect=lambda p: install_dir if "local/bin" in p else os.path.expanduser(p)):
+            result = install._install_binary(
+                str(archive_path), "minigraf-x86_64-unknown-linux-gnu.tar.xz"
+            )
+
+        assert result == os.path.join(install_dir, "minigraf")
+        assert os.path.exists(result)
+        assert os.access(result, os.X_OK)
+
+    def test_extracts_zip_on_windows(self, tmp_path):
+        binary_data = b"MZ fake windows exe"
+        archive_path = tmp_path / "minigraf-x86_64-pc-windows-msvc.zip"
+        with zipfile.ZipFile(str(archive_path), "w") as zf:
+            zf.writestr("minigraf.exe", binary_data)
+
+        with patch("sys.platform", "win32"), \
+             patch.dict(os.environ, {"LOCALAPPDATA": str(tmp_path)}):
+            result = install._install_binary(
+                str(archive_path), "minigraf-x86_64-pc-windows-msvc.zip"
+            )
+
+        assert result == os.path.join(
+            str(tmp_path), "Programs", "minigraf", "minigraf.exe"
+        )
+        assert os.path.exists(result)
+
+    def test_raises_if_no_binary_in_archive(self, tmp_path):
+        archive_path = tmp_path / "minigraf-x86_64-unknown-linux-gnu.tar.xz"
+        with tarfile.open(str(archive_path), "w:xz") as tar:
+            info = tarfile.TarInfo(name="README.md")
+            info.size = 4
+            tar.addfile(info, io.BytesIO(b"blah"))
+
+        install_dir = str(tmp_path / "local" / "bin")
+        with patch("sys.platform", "linux"), \
+             patch("os.path.expanduser", side_effect=lambda p: install_dir if "local/bin" in p else os.path.expanduser(p)):
+            with pytest.raises(ValueError, match="No minigraf binary"):
+                install._install_binary(
+                    str(archive_path), "minigraf-x86_64-unknown-linux-gnu.tar.xz"
+                )

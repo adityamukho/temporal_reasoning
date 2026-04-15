@@ -69,6 +69,49 @@ def _verify_checksum(asset_path: str, sha256_path: str) -> None:
         )
 
 
+def _install_binary(asset_path: str, asset: str) -> str:
+    """Extract minigraf binary from asset archive. Returns path to installed binary."""
+    if sys.platform == "win32":
+        install_dir = os.path.join(
+            os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+            "Programs", "minigraf"
+        )
+        binary_name = "minigraf.exe"
+    else:
+        install_dir = os.path.expanduser("~/.local/bin")
+        binary_name = "minigraf"
+
+    os.makedirs(install_dir, exist_ok=True)
+
+    if asset.endswith(".tar.xz"):
+        import tarfile as _tarfile
+        with _tarfile.open(asset_path) as tar:
+            members = [m for m in tar.getmembers()
+                       if m.name.endswith("minigraf") or m.name.endswith("minigraf.exe")]
+            if not members:
+                raise ValueError(f"No minigraf binary found in {asset}")
+            member = members[0]
+            member.name = os.path.basename(member.name)
+            tar.extract(member, path=install_dir)
+    elif asset.endswith(".zip"):
+        import zipfile as _zipfile
+        with _zipfile.ZipFile(asset_path) as zf:
+            names = [n for n in zf.namelist()
+                     if n.endswith("minigraf.exe") or n.endswith("minigraf")]
+            if not names:
+                raise ValueError(f"No minigraf binary found in {asset}")
+            data = zf.read(names[0])
+            out = os.path.join(install_dir, os.path.basename(names[0]))
+            with open(out, "wb") as f:
+                f.write(data)
+
+    binary_path = os.path.join(install_dir, binary_name)
+    if sys.platform != "win32":
+        os.chmod(binary_path, 0o755)
+
+    return binary_path
+
+
 def _get_target_dir() -> str:
     """Return install target: --target arg if provided, else cwd."""
     if "--target" in sys.argv:
