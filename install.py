@@ -13,6 +13,8 @@ import sys
 import subprocess
 import os
 from datetime import datetime, timezone
+import platform
+import hashlib
 
 UPDATE_INTERVAL = 7 * 24 * 60 * 60  # 7 days in seconds
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +26,47 @@ SKILL_DIRS = [
     os.path.join(".opencode", "skills", "vulcan"),
     os.path.join("skills", "vulcan"),
 ]
+
+MINIGRAF_RELEASES_URL = "https://github.com/adityamukho/minigraf/releases"
+
+
+def _get_platform_asset() -> str | None:
+    """Return the release asset filename for the current platform, or None if unsupported."""
+    machine = platform.machine().lower()
+    plat = sys.platform
+
+    if plat == "linux":
+        if machine in ("x86_64", "amd64"):
+            return "minigraf-x86_64-unknown-linux-gnu.tar.xz"
+        if machine in ("aarch64", "arm64"):
+            return "minigraf-aarch64-unknown-linux-gnu.tar.xz"
+    elif plat == "darwin":
+        if machine in ("arm64", "aarch64"):
+            return "minigraf-aarch64-apple-darwin.tar.xz"
+        if machine in ("x86_64", "amd64"):
+            return "minigraf-x86_64-apple-darwin.tar.xz"
+    elif plat == "win32":
+        return "minigraf-x86_64-pc-windows-msvc.zip"
+
+    return None
+
+
+def _verify_checksum(asset_path: str, sha256_path: str) -> None:
+    """Verify SHA256 of asset_path against sha256_path. Raises ValueError on mismatch."""
+    h = hashlib.sha256()
+    with open(asset_path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    actual = h.hexdigest()
+
+    with open(sha256_path) as f:
+        expected = f.read().strip().split()[0]
+
+    if actual != expected:
+        raise ValueError(
+            f"SHA256 mismatch for {os.path.basename(asset_path)}: "
+            f"got {actual[:16]}…, expected {expected[:16]}…"
+        )
 
 
 def _get_target_dir() -> str:
