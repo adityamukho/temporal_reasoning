@@ -384,3 +384,90 @@ class TestAgentStrategy:
             result = asyncio.run(mcp_server._agent_extract_and_transact("We chose Kafka."))
 
         assert result["ok"] is True
+
+
+class TestMcpToolWiring:
+    def test_list_tools_returns_six_tools(self, mock_minigraf_db, tmp_path):
+        import asyncio
+        import mcp_server
+        mcp_server.open_db(str(tmp_path / "t.graph"))
+
+        tools = asyncio.run(mcp_server.list_tools())
+
+        assert len(tools) == 6
+        names = {t.name for t in tools}
+        assert names == {
+            "vulcan_query", "vulcan_transact", "vulcan_retract",
+            "vulcan_report_issue", "memory_prepare_turn", "memory_finalize_turn",
+        }
+
+    def test_call_tool_vulcan_query(self, mock_minigraf_db, tmp_path):
+        import asyncio
+        mock_class, db_instance = mock_minigraf_db
+        db_instance.execute.return_value = json.dumps({"results": [["FastAPI"]]})
+        import mcp_server
+        mcp_server.open_db(str(tmp_path / "t.graph"))
+        db_instance.execute.reset_mock()
+
+        result = asyncio.run(mcp_server.call_tool(
+            "vulcan_query", {"datalog": "[:find ?n :where [?e :name ?n]]"}
+        ))
+
+        assert len(result) == 1
+        data = json.loads(result[0].text)
+        assert data["ok"] is True
+        assert data["results"] == [["FastAPI"]]
+
+    def test_call_tool_vulcan_transact(self, mock_minigraf_db, tmp_path):
+        import asyncio
+        mock_class, db_instance = mock_minigraf_db
+        db_instance.execute.return_value = json.dumps({"tx": "10"})
+        import mcp_server
+        mcp_server.open_db(str(tmp_path / "t.graph"))
+        db_instance.execute.reset_mock()
+
+        result = asyncio.run(mcp_server.call_tool(
+            "vulcan_transact",
+            {"facts": '[[:decision/cache :description "Redis"]]', "reason": "caching strategy"},
+        ))
+
+        assert len(result) == 1
+        data = json.loads(result[0].text)
+        assert data["ok"] is True
+
+    def test_call_tool_memory_prepare_turn(self, mock_minigraf_db, tmp_path):
+        import asyncio
+        mock_class, db_instance = mock_minigraf_db
+        db_instance.execute.return_value = json.dumps({"results": []})
+        import mcp_server
+        mcp_server.open_db(str(tmp_path / "t.graph"))
+
+        result = asyncio.run(mcp_server.call_tool(
+            "memory_prepare_turn", {"user_message": "what database are we using?"}
+        ))
+
+        assert len(result) == 1
+        assert isinstance(result[0].text, str)
+
+    def test_call_tool_memory_finalize_turn(self, mock_minigraf_db, tmp_path):
+        import asyncio
+        mock_class, db_instance = mock_minigraf_db
+        db_instance.execute.return_value = json.dumps({"tx": "11"})
+        import mcp_server
+        mcp_server.open_db(str(tmp_path / "t.graph"))
+
+        result = asyncio.run(mcp_server.call_tool(
+            "memory_finalize_turn", {"conversation_delta": "The sky is blue."}
+        ))
+
+        assert len(result) == 1
+        data = json.loads(result[0].text)
+        assert data["ok"] is True
+
+    def test_call_tool_unknown_raises(self, mock_minigraf_db, tmp_path):
+        import asyncio
+        import mcp_server
+        mcp_server.open_db(str(tmp_path / "t.graph"))
+
+        with pytest.raises(Exception, match="Unknown tool"):
+            asyncio.run(mcp_server.call_tool("nonexistent_tool", {}))

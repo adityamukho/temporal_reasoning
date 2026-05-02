@@ -525,13 +525,193 @@ async def handle_memory_finalize_turn(conversation_delta: str) -> Dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
-# MCP server (tools wired in subsequent tasks)
+# MCP server
 # ---------------------------------------------------------------------------
+
+from mcp.types import Tool, TextContent  # noqa: E402
 
 server = Server("temporal-reasoning")
 
+_TOOLS: List[Tool] = [
+    Tool(
+        name="vulcan_query",
+        description=(
+            "Query Vulcan's persistent bi-temporal graph memory using Datalog. "
+            "Call this BEFORE answering anything about past decisions, architecture, "
+            "dependencies, or preferences. Supports :as-of for temporal queries to see "
+            "what the graph contained at a past transaction time."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "datalog": {
+                    "type": "string",
+                    "description": "A valid Datalog query, e.g. [:find ?name :where [?e :component/name ?name]]",
+                },
+            },
+            "required": ["datalog"],
+        },
+    ),
+    Tool(
+        name="vulcan_transact",
+        description=(
+            "Store a durable fact in Vulcan's graph memory. Only call this for decisions, "
+            "architecture, dependencies, constraints, or preferences — NOT for transient "
+            "observations or intermediate reasoning."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "facts": {
+                    "type": "string",
+                    "description": (
+                        'A Datalog transact block, e.g. [[:decision/cache-strategy '
+                        ':decision/description "use Redis"]]'
+                    ),
+                },
+                "reason": {
+                    "type": "string",
+                    "description": (
+                        "Why this fact deserves long-term storage. "
+                        "Forces you to justify writes — only store facts worth remembering."
+                    ),
+                },
+            },
+            "required": ["facts", "reason"],
+        },
+    ),
+    Tool(
+        name="vulcan_retract",
+        description=(
+            "Retract a fact from Vulcan's graph memory. Retraction records a new fact with "
+            "asserted=false — the original stays in history for bi-temporal auditing."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "facts": {
+                    "type": "string",
+                    "description": "A Datalog retract block, e.g. [[:component/auth :calls :component/jwt]]",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Why this fact is being retracted. Forces you to justify the removal.",
+                },
+            },
+            "required": ["facts", "reason"],
+        },
+    ),
+    Tool(
+        name="vulcan_report_issue",
+        description=(
+            "Report an issue with Vulcan query or transact operations. "
+            "Use this when Vulcan returns errors to file a GitHub issue for tracking."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "issue_type": {
+                    "type": "string",
+                    "description": "Type of issue to report",
+                    "enum": ["invalid_query", "transact_failure", "parse_error", "minigraf_bug"],
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Human-readable description of the issue",
+                },
+                "datalog": {
+                    "type": "string",
+                    "description": "Optional Datalog query or transact that failed",
+                },
+                "error": {
+                    "type": "string",
+                    "description": "Optional error message returned by Vulcan",
+                },
+            },
+            "required": ["issue_type", "description"],
+        },
+    ),
+    Tool(
+        name="memory_prepare_turn",
+        description=(
+            "Retrieve relevant memory context for the current user message. "
+            "Call this at the START of every turn, before reading the user's message. "
+            "Returns a context block string to prepend to your working context."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "user_message": {
+                    "type": "string",
+                    "description": "The user's message for this turn",
+                },
+            },
+            "required": ["user_message"],
+        },
+    ),
+    Tool(
+        name="memory_finalize_turn",
+        description=(
+            "Extract and store memorable facts from the completed conversation turn. "
+            "Call this at the END of every turn, after composing your response. "
+            "Pass the full user+agent exchange for this turn."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "conversation_delta": {
+                    "type": "string",
+                    "description": "The user message and agent response for this turn",
+                },
+            },
+            "required": ["conversation_delta"],
+        },
+    ),
+]
+
+
+@server.list_tools()
+async def list_tools() -> List[Tool]:
+    return _TOOLS
+
+
+@server.call_tool()
+async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+    if name == "vulcan_query":
+        result = handle_vulcan_query(arguments["datalog"])
+        return [TextContent(type="text", text=json.dumps(result))]
+
+    if name == "vulcan_transact":
+        result = handle_vulcan_transact(arguments["facts"], arguments["reason"])
+        return [TextContent(type="text", text=json.dumps(result))]
+
+    if name == "vulcan_retract":
+        result = handle_vulcan_retract(arguments["facts"], arguments["reason"])
+        return [TextContent(type="text", text=json.dumps(result))]
+
+    if name == "vulcan_report_issue":
+        result = handle_vulcan_report_issue(
+            arguments["issue_type"],
+            arguments["description"],
+            datalog=arguments.get("datalog"),
+            error=arguments.get("error"),
+        )
+        return [TextContent(type="text", text=json.dumps(result))]
+
+    if name == "memory_prepare_turn":
+        block = handle_memory_prepare_turn(arguments["user_message"])
+        return [TextContent(type="text", text=block)]
+
+    if name == "memory_finalize_turn":
+        result = await handle_memory_finalize_turn(arguments["conversation_delta"])
+        return [TextContent(type="text", text=json.dumps(result))]
+
+    raise ValueError(f"Unknown tool: {name}")
+
 
 async def main() -> None:
+    global _server_ref
+    _server_ref = server
     open_db()
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
