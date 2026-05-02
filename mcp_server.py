@@ -279,7 +279,7 @@ def handle_memory_prepare_turn(user_message: str) -> str:
 # ---------------------------------------------------------------------------
 
 _SIGNAL_PATTERNS = [
-    (r"we'?ll?\s+use\s+([\w\-]+)", "decision", ":description", "chosen technology or approach"),
+    (r"we(?:'ll?|\s+will)\s+use\s+([\w\-]+)", "decision", ":description", "chosen technology or approach"),
     (r"going\s+with\s+([\w\-]+)", "decision", ":description", "chosen approach"),
     (r"decided\s+(?:to\s+)?(?:use\s+)?([\w\-]+)", "decision", ":description", "decided approach"),
     (r"we\s+chose\s+([\w\-]+)", "decision", ":description", "chosen option"),
@@ -287,9 +287,9 @@ _SIGNAL_PATTERNS = [
     (r"I\s+don'?t\s+like\s+([\w\-]+)", "preference", ":description", "stated dislike"),
     (r"always\s+use\s+([\w\-]+)", "preference", ":description", "always-use preference"),
     (r"never\s+use\s+([\w\-]+)", "preference", ":description", "never-use preference"),
+    (r"prioritize\s+([\w\-]+)", "preference", ":description", "priority preference"),
     (r"must\s+be\s+([\w\-]+)", "constraint", ":description", "hard constraint"),
     (r"can'?t\s+use\s+([\w\-]+)", "constraint", ":description", "exclusion constraint"),
-    (r"prioritize\s+([\w\-]+)", "constraint", ":description", "priority constraint"),
     (r"depends\s+on\s+([\w\-]+)", "dependency", ":description", "dependency relationship"),
     (r"requires?\s+([\w\-]+)", "dependency", ":description", "required dependency"),
 ]
@@ -315,6 +315,7 @@ def heuristic_extract(text: str) -> List[Dict[str, str]]:
             entity_ident = f":{entity_type}/{value.lower().replace('-', '_')}"
             facts.append({
                 "entity": entity_ident,
+                "entity_type": entity_type,
                 "attribute": attribute,
                 "value": value,
                 "reason": f"{reason_prefix} — extracted by heuristic strategy",
@@ -335,16 +336,22 @@ def _transact_extracted_facts(facts: List[Dict[str, str]]) -> int:
     stored = 0
     for fact in facts:
         entity = fact["entity"]
+        entity_type = fact.get("entity_type", "")
         attribute = fact["attribute"]
         value = fact["value"]
         now_z = _now_utc_ms()
         try:
             # Map syntax verified working: (transact [[e attr "v"]] {:valid-at "ts"})
             db.execute(f'(transact [[{entity} {attribute} "{value}"]] {{:valid-at "{now_z}"}})')
-            db.checkpoint()
+            if entity_type:
+                db.execute(
+                    f'(transact [[{entity} :entity-type :type/{entity_type}]] {{:valid-at "{now_z}"}})'
+                )
             stored += 1
         except MiniGrafError:
             continue
+    if stored:
+        db.checkpoint()
     return stored
 
 
