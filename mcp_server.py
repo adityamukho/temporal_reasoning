@@ -399,6 +399,25 @@ def _get_anthropic_client():
     return anthropic.Anthropic(api_key=api_key)
 
 
+def _parse_valid_at_hint(raw: str):
+    """Extract optional '; valid-at: YYYY-MM-DD' comment from model output.
+
+    Returns (valid_at, cleaned_datalog) where valid_at defaults to the current
+    UTC ms timestamp if no hint is present.
+    """
+    valid_at = _now_utc_ms()
+    kept = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("; valid-at:"):
+            date_str = stripped[len("; valid-at:"):].strip()
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+                valid_at = date_str
+        else:
+            kept.append(line)
+    return valid_at, "\n".join(kept).strip()
+
+
 def _llm_extract_and_transact(conversation_delta: str) -> Dict[str, Any]:
     """Call a lightweight LLM to extract facts. Returns {ok, stored_count, strategy}."""
     try:
@@ -413,10 +432,14 @@ def _llm_extract_and_transact(conversation_delta: str) -> Dict[str, Any]:
         raw_facts = message.content[0].text.strip()
         if not raw_facts or raw_facts == "[]":
             return {"ok": True, "stored_count": 0, "strategy": "llm"}
+        valid_at, datalog = _parse_valid_at_hint(raw_facts)
+        if not datalog or datalog == "[]":
+            return {"ok": True, "stored_count": 0, "strategy": "llm"}
         db = get_db()
-        db.execute(f"(transact {raw_facts})")
+        db.execute(f'(transact {datalog} {{:valid-at "{valid_at}"}})')
         db.checkpoint()
-        return {"ok": True, "stored_count": 1, "strategy": "llm"}
+        stored_count = datalog.count("[:")
+        return {"ok": True, "stored_count": stored_count, "strategy": "llm"}
     except Exception as e:
         return {"ok": False, "error": str(e), "strategy": "llm"}
 
@@ -454,23 +477,21 @@ async def _request_agent_memory_block_async(conversation_delta: str) -> str:
     return result.content.text if hasattr(result.content, "text") else str(result.content)
 
 
-def _request_agent_memory_block(conversation_delta: str) -> str:
-    """Synchronous wrapper for MCP sampling request."""
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(_request_agent_memory_block_async(conversation_delta))
-
-
-def _agent_extract_and_transact(conversation_delta: str) -> Dict[str, Any]:
+async def _agent_extract_and_transact(conversation_delta: str) -> Dict[str, Any]:
     """Request a memory block from the agent via MCP sampling, then transact it."""
     try:
-        raw_facts = _request_agent_memory_block(conversation_delta)
+        raw_facts = await _request_agent_memory_block_async(conversation_delta)
         raw_facts = raw_facts.strip()
         if not raw_facts or raw_facts == "[]":
             return {"ok": True, "stored_count": 0, "strategy": "agent"}
+        valid_at, datalog = _parse_valid_at_hint(raw_facts)
+        if not datalog or datalog == "[]":
+            return {"ok": True, "stored_count": 0, "strategy": "agent"}
         db = get_db()
-        db.execute(f"(transact {raw_facts})")
+        db.execute(f'(transact {datalog} {{:valid-at "{valid_at}"}})')
         db.checkpoint()
-        return {"ok": True, "stored_count": 1, "strategy": "agent"}
+        stored_count = datalog.count("[:")
+        return {"ok": True, "stored_count": stored_count, "strategy": "agent"}
     except Exception as e:
         return {"ok": False, "error": str(e), "strategy": "agent"}
 
@@ -479,7 +500,7 @@ def _agent_extract_and_transact(conversation_delta: str) -> Dict[str, Any]:
 # memory_finalize_turn — dispatcher
 # ---------------------------------------------------------------------------
 
-def handle_memory_finalize_turn(conversation_delta: str) -> Dict[str, Any]:
+async def handle_memory_finalize_turn(conversation_delta: str) -> Dict[str, Any]:
     """
     Extract facts from conversation_delta and transact them.
     Strategy selected via VULCAN_EXTRACTION_STRATEGY env var (default: heuristic).
@@ -495,10 +516,10 @@ def handle_memory_finalize_turn(conversation_delta: str) -> Dict[str, Any]:
         result = _llm_extract_and_transact(conversation_delta)
         if result["ok"]:
             return result
-        return _agent_extract_and_transact(conversation_delta)
+        return await _agent_extract_and_transact(conversation_delta)
 
     if strategy == "agent":
-        return _agent_extract_and_transact(conversation_delta)
+        return await _agent_extract_and_transact(conversation_delta)
 
     return {"ok": False, "error": f"Unknown strategy: {strategy}"}
 

@@ -32,6 +32,7 @@ dependencies = [
 llm = ["anthropic>=0.40.0"]
 dev = [
     "pytest>=8.4.2",
+    "pytest-asyncio>=0.23.0",
     "black>=25.11.0",
     "ruff>=0.15.12",
 ]

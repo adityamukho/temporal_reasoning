@@ -301,6 +301,7 @@ class TestHeuristicExtraction:
 
 class TestMemoryFinalizeTurnHeuristic:
     def test_transacts_extracted_facts(self, mock_minigraf_db, tmp_path, monkeypatch):
+        import asyncio
         mock_class, db_instance = mock_minigraf_db
         monkeypatch.setenv("VULCAN_EXTRACTION_STRATEGY", "heuristic")
         db_instance.execute.return_value = json.dumps({"tx": "5"})
@@ -308,21 +309,22 @@ class TestMemoryFinalizeTurnHeuristic:
         mcp_server.open_db(str(tmp_path / "t.graph"))
         db_instance.execute.reset_mock()
 
-        result = mcp_server.handle_memory_finalize_turn(
+        result = asyncio.run(mcp_server.handle_memory_finalize_turn(
             "User: We'll use Redis.\nAgent: Stored."
-        )
+        ))
 
         assert result["ok"] is True
         assert isinstance(result["stored_count"], int)
 
     def test_returns_zero_stored_when_no_signals(self, mock_minigraf_db, tmp_path, monkeypatch):
+        import asyncio
         mock_class, db_instance = mock_minigraf_db
         monkeypatch.setenv("VULCAN_EXTRACTION_STRATEGY", "heuristic")
         import mcp_server
         mcp_server.open_db(str(tmp_path / "t.graph"))
         db_instance.execute.reset_mock()
 
-        result = mcp_server.handle_memory_finalize_turn("The weather is fine.")
+        result = asyncio.run(mcp_server.handle_memory_finalize_turn("The weather is fine."))
 
         assert result["ok"] is True
         assert result["stored_count"] == 0
@@ -352,6 +354,7 @@ class TestLlmStrategy:
         mock_anthropic_client.messages.create.assert_called_once()
 
     def test_falls_back_to_agent_on_api_failure(self, mock_minigraf_db, tmp_path, monkeypatch):
+        import asyncio
         mock_class, db_instance = mock_minigraf_db
         monkeypatch.setenv("VULCAN_EXTRACTION_STRATEGY", "llm")
         db_instance.execute.return_value = json.dumps({"tx": "7"})
@@ -359,23 +362,25 @@ class TestLlmStrategy:
         mcp_server.open_db(str(tmp_path / "t.graph"))
 
         with patch("mcp_server._get_anthropic_client", side_effect=Exception("no key")):
-            with patch("mcp_server._agent_extract_and_transact") as mock_agent:
+            with patch("mcp_server._agent_extract_and_transact", new_callable=AsyncMock) as mock_agent:
                 mock_agent.return_value = {"ok": True, "stored_count": 0, "strategy": "agent"}
-                result = mcp_server.handle_memory_finalize_turn("We'll use Kafka.")
+                result = asyncio.run(mcp_server.handle_memory_finalize_turn("We'll use Kafka."))
 
         mock_agent.assert_called_once()
 
 
 class TestAgentStrategy:
     def test_returns_ok_result(self, mock_minigraf_db, tmp_path, monkeypatch):
+        import asyncio
         mock_class, db_instance = mock_minigraf_db
         monkeypatch.setenv("VULCAN_EXTRACTION_STRATEGY", "agent")
         db_instance.execute.return_value = json.dumps({"tx": "8"})
         import mcp_server
         mcp_server.open_db(str(tmp_path / "t.graph"))
 
-        with patch("mcp_server._request_agent_memory_block",
+        with patch("mcp_server._request_agent_memory_block_async",
+                   new_callable=AsyncMock,
                    return_value='[[:decision/kafka :description "Kafka"]]'):
-            result = mcp_server._agent_extract_and_transact("We chose Kafka.")
+            result = asyncio.run(mcp_server._agent_extract_and_transact("We chose Kafka."))
 
         assert result["ok"] is True
