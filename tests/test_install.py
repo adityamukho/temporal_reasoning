@@ -42,6 +42,13 @@ class TestCheckMcpPackage:
                 result = install.check_mcp_package()
         assert mock_run.called
 
+    def test_returns_false_when_pip_fails(self):
+        with patch("builtins.__import__", side_effect=ImportError):
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(returncode=1)
+                result = install.check_mcp_package()
+        assert result is False
+
 
 class TestCheckMcpServerImportable:
     def test_returns_true_when_mcp_server_importable(self):
