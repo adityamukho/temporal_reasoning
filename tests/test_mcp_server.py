@@ -326,3 +326,56 @@ class TestMemoryFinalizeTurnHeuristic:
 
         assert result["ok"] is True
         assert result["stored_count"] == 0
+
+
+class TestLlmStrategy:
+    def test_calls_anthropic_api(self, mock_minigraf_db, tmp_path, monkeypatch):
+        mock_class, db_instance = mock_minigraf_db
+        monkeypatch.setenv("VULCAN_EXTRACTION_STRATEGY", "llm")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        db_instance.execute.return_value = json.dumps({"tx": "6"})
+        import mcp_server
+
+        fake_response_text = '[[:decision/redis :description "Redis"]]\n'
+        mock_anthropic_client = MagicMock()
+        mock_message = MagicMock()
+        mock_message.content = [MagicMock(text=fake_response_text)]
+        mock_anthropic_client.messages.create.return_value = mock_message
+
+        with patch("mcp_server._get_anthropic_client", return_value=mock_anthropic_client):
+            mcp_server.open_db(str(tmp_path / "t.graph"))
+            result = mcp_server._llm_extract_and_transact(
+                "User: We'll use Redis.\nAgent: Stored."
+            )
+
+        assert result["ok"] is True
+        mock_anthropic_client.messages.create.assert_called_once()
+
+    def test_falls_back_to_agent_on_api_failure(self, mock_minigraf_db, tmp_path, monkeypatch):
+        mock_class, db_instance = mock_minigraf_db
+        monkeypatch.setenv("VULCAN_EXTRACTION_STRATEGY", "llm")
+        db_instance.execute.return_value = json.dumps({"tx": "7"})
+        import mcp_server
+        mcp_server.open_db(str(tmp_path / "t.graph"))
+
+        with patch("mcp_server._get_anthropic_client", side_effect=Exception("no key")):
+            with patch("mcp_server._agent_extract_and_transact") as mock_agent:
+                mock_agent.return_value = {"ok": True, "stored_count": 0, "strategy": "agent"}
+                result = mcp_server.handle_memory_finalize_turn("We'll use Kafka.")
+
+        mock_agent.assert_called_once()
+
+
+class TestAgentStrategy:
+    def test_returns_ok_result(self, mock_minigraf_db, tmp_path, monkeypatch):
+        mock_class, db_instance = mock_minigraf_db
+        monkeypatch.setenv("VULCAN_EXTRACTION_STRATEGY", "agent")
+        db_instance.execute.return_value = json.dumps({"tx": "8"})
+        import mcp_server
+        mcp_server.open_db(str(tmp_path / "t.graph"))
+
+        with patch("mcp_server._request_agent_memory_block",
+                   return_value='[[:decision/kafka :description "Kafka"]]'):
+            result = mcp_server._agent_extract_and_transact("We chose Kafka.")
+
+        assert result["ok"] is True

@@ -30,6 +30,9 @@ SESSION_RULES = [
 # Module-level DB instance — opened once, held for the session lifetime
 _db: Optional[MiniGrafDb] = None
 
+# Module-level server reference — set after server creation for MCP sampling
+_server_ref: Optional[Server] = None
+
 # ---------------------------------------------------------------------------
 # DB lifecycle
 # ---------------------------------------------------------------------------
@@ -355,14 +358,121 @@ def _transact_extracted_facts(facts: List[Dict[str, str]]) -> int:
     return stored
 
 
+# ---------------------------------------------------------------------------
+# Fact extraction — llm strategy
+# ---------------------------------------------------------------------------
+
+_LLM_EXTRACTION_PROMPT = """You are a memory extraction assistant for a bi-temporal graph database. Review the conversation below and identify any decisions, preferences, constraints, or dependencies that should be stored in long-term memory.
+
+Return ONLY a Datalog transact expression — a list of triples in this exact format:
+[[:entity/ident :attribute "value"]
+ [:entity/ident :attribute "value"]]
+
+If nothing worth storing was found, return an empty list: []
+
+Use these entity type prefixes: :decision/, :preference/, :constraint/, :dependency/
+Use these attributes: :description, :reason, :rejected
+
+IMPORTANT — bi-temporality: this database is bi-temporal. Facts have both a transaction time
+(when they were recorded) and a valid time (when they were true in the world). When the conversation
+mentions that something was decided or true at a specific past date, note that date alongside the
+fact so the caller can set :valid-at accordingly. Wrap such facts in a comment line:
+; valid-at: 2024-03-15
+[[:entity/ident :attribute "value"]]
+
+For point-in-time historical queries, always use :as-of N and :valid-at "date" TOGETHER —
+using only one gives a partial view.
+
+Conversation:
+{conversation}"""
+
+
+def _get_anthropic_client():
+    """Return an Anthropic client. Raises if anthropic package or API key is missing."""
+    try:
+        import anthropic
+    except ImportError:
+        raise RuntimeError("anthropic package not installed — pip install anthropic")
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set")
+    return anthropic.Anthropic(api_key=api_key)
+
+
 def _llm_extract_and_transact(conversation_delta: str) -> Dict[str, Any]:
-    """LLM-based extraction strategy — implemented in Task 7."""
-    raise NotImplementedError("llm strategy implemented in Task 7")
+    """Call a lightweight LLM to extract facts. Returns {ok, stored_count, strategy}."""
+    try:
+        client = _get_anthropic_client()
+        model = os.environ.get("VULCAN_LLM_MODEL", "claude-haiku-4-5-20251001")
+        prompt = _LLM_EXTRACTION_PROMPT.format(conversation=conversation_delta)
+        message = client.messages.create(
+            model=model,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw_facts = message.content[0].text.strip()
+        if not raw_facts or raw_facts == "[]":
+            return {"ok": True, "stored_count": 0, "strategy": "llm"}
+        db = get_db()
+        db.execute(f"(transact {raw_facts})")
+        db.checkpoint()
+        return {"ok": True, "stored_count": 1, "strategy": "llm"}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "strategy": "llm"}
+
+
+# ---------------------------------------------------------------------------
+# Fact extraction — agent (MCP sampling) strategy
+# ---------------------------------------------------------------------------
+
+_AGENT_SAMPLING_PROMPT = """Review this conversation turn and output ONLY a Datalog transact expression for any decisions, preferences, constraints, or dependencies worth storing in long-term memory.
+
+Format: [[:entity/ident :attribute "value"]]
+If nothing is worth storing, output: []
+
+IMPORTANT — bi-temporality: this database is bi-temporal. Facts have both a transaction time
+(when recorded) and a valid time (when true in the world). If a fact was decided or true at a
+specific past date, prefix it with a comment: ; valid-at: YYYY-MM-DD
+
+For historical point-in-time queries, always use :as-of N AND :valid-at "date" together —
+using only one gives a partial view, not a true bi-temporal snapshot.
+
+Conversation:
+{conversation}"""
+
+
+async def _request_agent_memory_block_async(conversation_delta: str) -> str:
+    """Use MCP sampling to ask the connected agent for a memory block."""
+    if _server_ref is None:
+        raise RuntimeError("Server reference not set")
+    from mcp.types import SamplingMessage, TextContent as TC
+    prompt = _AGENT_SAMPLING_PROMPT.format(conversation=conversation_delta)
+    result = await _server_ref.request_context.session.create_message(
+        messages=[SamplingMessage(role="user", content=TC(type="text", text=prompt))],
+        max_tokens=512,
+    )
+    return result.content.text if hasattr(result.content, "text") else str(result.content)
+
+
+def _request_agent_memory_block(conversation_delta: str) -> str:
+    """Synchronous wrapper for MCP sampling request."""
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(_request_agent_memory_block_async(conversation_delta))
 
 
 def _agent_extract_and_transact(conversation_delta: str) -> Dict[str, Any]:
-    """Agent-based extraction strategy — implemented in Task 7."""
-    raise NotImplementedError("agent strategy implemented in Task 7")
+    """Request a memory block from the agent via MCP sampling, then transact it."""
+    try:
+        raw_facts = _request_agent_memory_block(conversation_delta)
+        raw_facts = raw_facts.strip()
+        if not raw_facts or raw_facts == "[]":
+            return {"ok": True, "stored_count": 0, "strategy": "agent"}
+        db = get_db()
+        db.execute(f"(transact {raw_facts})")
+        db.checkpoint()
+        return {"ok": True, "stored_count": 1, "strategy": "agent"}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "strategy": "agent"}
 
 
 # ---------------------------------------------------------------------------
