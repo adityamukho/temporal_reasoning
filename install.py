@@ -234,6 +234,84 @@ def setup_mcp_json(target_dir: str) -> bool:
     return True
 
 
+def setup_claude_settings(target_dir: str) -> bool:
+    """Idempotently write hooks and ANTHROPIC_API_KEY into .claude/settings.local.json.
+
+    - Creates .claude/ and the file if absent.
+    - Merges into existing content (permissions and other keys are preserved).
+    - For hooks: searches existing UserPromptSubmit/Stop arrays for an entry
+      that already references our hook scripts and updates the command path;
+      appends a new entry only if none is found.
+    - Preserves ANTHROPIC_API_KEY if already set to a real value.
+    """
+    import json
+
+    prepare_cmd = f"python {os.path.join(REPO_DIR, 'hooks', 'prepare_hook.py')}"
+    finalize_cmd = f"python {os.path.join(REPO_DIR, 'hooks', 'finalize_hook.py')}"
+
+    claude_dir = os.path.join(target_dir, ".claude")
+    settings_path = os.path.join(claude_dir, "settings.local.json")
+
+    existing: dict = {}
+    file_existed = os.path.exists(settings_path)
+    if file_existed:
+        try:
+            with open(settings_path) as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            existing = {}
+
+    # --- env.ANTHROPIC_API_KEY ---
+    env_block = existing.setdefault("env", {})
+    prev_key = env_block.get("ANTHROPIC_API_KEY", "")
+    key_is_real = bool(prev_key) and prev_key != _PLACEHOLDER_KEY
+    if not key_is_real:
+        env_block["ANTHROPIC_API_KEY"] = _PLACEHOLDER_KEY
+
+    # --- hooks ---
+    hooks_block = existing.setdefault("hooks", {})
+
+    def _upsert_hook(event: str, script_marker: str, command: str, timeout: int) -> str:
+        """Insert or update a hook command for the given event. Returns 'added'/'updated'."""
+        entries = hooks_block.setdefault(event, [])
+        # Search for an existing entry whose hook command references our script
+        for entry in entries:
+            for hook in entry.get("hooks", []):
+                if script_marker in hook.get("command", ""):
+                    old_cmd = hook["command"]
+                    hook["command"] = command
+                    hook["timeout"] = timeout
+                    return "updated" if old_cmd != command else "unchanged"
+        # Not found — append a new matcher entry
+        entries.append({
+            "matcher": "",
+            "hooks": [{"type": "command", "command": command, "timeout": timeout}],
+        })
+        return "added"
+
+    prepare_status = _upsert_hook("UserPromptSubmit", "prepare_hook.py", prepare_cmd, 5000)
+    finalize_status = _upsert_hook("Stop", "finalize_hook.py", finalize_cmd, 10000)
+
+    os.makedirs(claude_dir, exist_ok=True)
+    try:
+        with open(settings_path, "w") as f:
+            json.dump(existing, f, indent=2)
+            f.write("\n")
+    except IOError as e:
+        print(f"✗ Could not write {settings_path}: {e}")
+        return False
+
+    verb = "Updated" if file_existed else "Created"
+    print(f"✓ {verb} {settings_path}")
+    print(f"    UserPromptSubmit hook ({prepare_status}): {prepare_cmd}")
+    print(f"    Stop hook ({finalize_status}): {finalize_cmd}")
+    if key_is_real:
+        print("    env.ANTHROPIC_API_KEY = (preserved)")
+    else:
+        print(f"    env.ANTHROPIC_API_KEY = {_PLACEHOLDER_KEY}  ← replace with your key")
+    return True
+
+
 def main(target_dir: str = "") -> None:
     print("=" * 50)
     print("Temporal Reasoning Skill Setup")
@@ -260,17 +338,20 @@ def main(target_dir: str = "") -> None:
     mcp_ok = setup_mcp_json(target_dir)
     print()
 
-    if all(results) and mcp_ok:
+    print("Configuring .claude/settings.local.json...")
+    settings_ok = setup_claude_settings(target_dir)
+    print()
+
+    if all(results) and mcp_ok and settings_ok:
         print("=" * 50)
         print("✓ Setup complete!")
         print("=" * 50)
         print()
-        print("Claude Code hooks (auto-memory) — add to .claude/settings.local.json:")
-        print("  See hooks/claude-code.json for the hooks block template.")
-        print("  The hooks also need ANTHROPIC_API_KEY in the session env when")
-        print("  VULCAN_EXTRACTION_STRATEGY=llm (see README § Per-Turn Auto-Memory).")
+        print("Replace any 'your-api-key-here' placeholders in:")
+        print("  .mcp.json                      — MCP server process")
+        print("  .claude/settings.local.json    — hook subprocesses (llm strategy only)")
         print()
-        print("Other agents:")
+        print("Other agents (manual config — see hooks/ for templates):")
         print("    hooks/codex.toml    — Codex CLI")
         print("    hooks/hermes.yaml   — Hermes")
         print("    hooks/opencode.json — OpenCode")
