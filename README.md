@@ -62,34 +62,32 @@ query("[:find ?name :where [:project/db :name ?name]]")
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   AI Coding Agent                        │
-│              (Claude Code, OpenCode, Codex)            │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────┐
-│              Python Skill Layer                          │
-│         (vulcan.py - this repo)                         │
-│   - query(), transact() functions                     │
-│   - CLI mode                                           │
-│   - Backup/restore utilities                           │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────┐
-│              Minigraf CLI (>= 0.19.0)                   │
-│         (https://github.com/adityamukho/minigraf)       │
-│         (the storage engine)                       │
-│   - Bi-temporal Datalog database                      │
-│   - Transaction time + Valid time                      │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────┐
-│              Graph File                                  │
-│     memory.graph (current working directory)                        │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        AI Coding Agent                            │
+│                 (Claude Code, OpenCode, Codex)                   │
+└──────────┬───────────────────────────────────────┬───────────────┘
+           │ MCP tool calls                        │ per-turn hooks
+           │ (vulcan_query, vulcan_transact, …)    │ (UserPromptSubmit / Stop)
+           ▼                                       ▼
+┌──────────────────────────┐         ┌─────────────────────────────┐
+│   MCP Server             │         │   Hook scripts              │
+│   mcp_server.py          │◄────────│   prepare_hook.py           │
+│   (persistent stdio)     │         │   finalize_hook.py          │
+└──────────┬───────────────┘         └─────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│              MiniGrafDb Python binding (minigraf package)         │
+│              https://github.com/adityamukho/minigraf              │
+│   - Bi-temporal Datalog engine                                   │
+│   - Transaction time + Valid time                                │
+└──────────┬───────────────────────────────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────────────────────────┐
+│              Graph File                                           │
+│              memory.graph  (current working directory)           │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Install
@@ -152,11 +150,50 @@ Default: `memory.graph` in the current working directory.
 
 Override: `MINIGRAF_GRAPH_PATH=/custom/path python ...`
 
+## Per-Turn Auto-Memory
+
+When running under Claude Code with the hook configuration in `hooks/claude-code.json`, the system automatically injects relevant memory context before each turn and extracts durable facts after each turn — without the agent explicitly calling any tool.
+
+### Prepare phase (before the turn)
+
+`prepare_hook.py` fires on the `UserPromptSubmit` event. It:
+
+1. Extracts candidate entity tokens from the user's message (stop-word filtered, minimum 4 characters).
+2. Queries the graph for facts whose values contain those tokens, using `:valid-at` set to the current UTC timestamp so only currently-valid facts are returned.
+3. Falls back to a broad scan (capped by `VULCAN_PREPARE_SCAN_LIMIT`, default 50 rows) when no entity-specific results are found.
+4. Returns the results as `additionalContext` prepended to the agent's working context for that turn.
+
+For messages containing temporal signals (e.g. "before", "last week", "as of") with an explicit ISO date, `:valid-at` is set to that date instead (midnight UTC), enabling point-in-time recall.
+
+### Finalize phase (after the turn)
+
+`finalize_hook.py` fires on the `Stop` event. It reads the last user+assistant exchange from the transcript, then runs the configured extraction strategy:
+
+| Strategy | Behaviour |
+|----------|-----------|
+| `heuristic` (default) | Regex patterns detect decision-signal phrases ("we'll use X", "decided to use X", "always use X", "depends on X", …) and transact the matched tokens as `:decision/`, `:preference/`, `:constraint/`, or `:dependency/` entities. |
+| `llm` | Sends the exchange to a lightweight Claude model (`claude-haiku-4-5-20251001` by default) with a structured prompt. The model returns a Datalog `transact` expression; an optional `; valid-at: YYYY-MM-DD` comment sets the fact's valid time. Falls back to the `agent` strategy on error. |
+| `agent` | Uses MCP sampling to ask the connected agent itself for a memory block in the same Datalog format. |
+
+### Configuration
+
+| Environment variable | Default | Effect |
+|----------------------|---------|--------|
+| `VULCAN_EXTRACTION_STRATEGY` | `heuristic` | Finalize strategy: `heuristic`, `llm`, or `agent` |
+| `VULCAN_PREPARE_SCAN_LIMIT` | `50` | Max rows returned by the broad fallback scan in the prepare phase |
+| `VULCAN_LLM_MODEL` | `claude-haiku-4-5-20251001` | Model used when `VULCAN_EXTRACTION_STRATEGY=llm` |
+| `ANTHROPIC_API_KEY` | — | Required when `VULCAN_EXTRACTION_STRATEGY=llm` |
+| `MINIGRAF_GRAPH_PATH` | `memory.graph` | Override the graph file location |
+
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `vulcan.py` | Python CLI wrapper |
+| `mcp_server.py` | Persistent stdio MCP server — primary interface to the graph |
+| `vulcan.py` | Python CLI wrapper (direct use outside MCP) |
+| `hooks/prepare_hook.py` | Claude Code UserPromptSubmit hook — injects memory context |
+| `hooks/finalize_hook.py` | Claude Code Stop hook — extracts and stores facts |
+| `hooks/claude-code.json` | Hook + MCP configuration for Claude Code |
 | `report_issue.py` | GitHub issue reporter |
 | `install.py` | Setup script |
 | `pyproject.toml` | Python packaging |
@@ -170,6 +207,8 @@ Override: `MINIGRAF_GRAPH_PATH=/custom/path python ...`
 - **vulcan_transact** — Store facts (reason required)
 - **vulcan_retract** — Retract facts (original stays in history)
 - **vulcan_report_issue** — File GitHub issues
+- **memory_prepare_turn** — Retrieve relevant context for the current user message
+- **memory_finalize_turn** — Extract and store memorable facts after a turn
 
 ## Query Examples
 
@@ -269,5 +308,5 @@ See [`evals/benchmark.md`](evals/benchmark.md) for full results and per-eval bre
 
 - **Phase 1** — Python skill layer ✓
 - **Phase 2** — Write policy, report_issue, install, skill benchmarks ✓
-- **Phase 3** — WASM bindings, MCP integration (future)
+- **Phase 3** — MCP server, per-turn auto-memory hooks ✓
 - **Phase 4** — Code structure evolution from git history (future)

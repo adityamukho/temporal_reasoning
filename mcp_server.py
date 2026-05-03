@@ -356,12 +356,16 @@ def _transact_extracted_facts(facts: List[Dict[str, str]]) -> int:
         value = fact["value"]
         now_z = _now_utc_ms()
         try:
-            # Map syntax verified working: (transact [[e attr "v"]] {:valid-at "ts"})
-            db.execute(f'(transact [[{entity} {attribute} "{value}"]] {{:valid-at "{now_z}"}})')
+            # Combine main fact and :entity-type into one transact so both triples
+            # are written atomically — a single (transact [...]) is one transaction.
             if entity_type:
-                db.execute(
-                    f'(transact [[{entity} :entity-type :type/{entity_type}]] {{:valid-at "{now_z}"}})'
+                triples = (
+                    f'[{entity} {attribute} "{value}"]'
+                    f' [{entity} :entity-type :type/{entity_type}]'
                 )
+            else:
+                triples = f'[{entity} {attribute} "{value}"]'
+            db.execute(f'(transact [{triples}] {{:valid-at "{now_z}"}})')
             stored += 1
         except MiniGrafError:
             continue
